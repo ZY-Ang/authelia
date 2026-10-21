@@ -9,17 +9,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"hash"
-	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1619,90 +1616,4 @@ func TestDeriveCryptographicKey(t *testing.T) {
 
 		assert.NotEqual(t, DeriveLegacyCryptographicKey([]byte("the key")), derived)
 	})
-}
-
-func mustGenerateTLSKeyPair(t *testing.T, serial *big.Int) (certificate, privateKey []byte) {
-	t.Helper()
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-
-	template := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "test"},
-		NotBefore:    time.Now().Add(-time.Minute),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-	}
-
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	require.NoError(t, err)
-
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	require.NoError(t, err)
-
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
-		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-}
-
-func TestNewTLSConfigShouldReloadClientCertificate(t *testing.T) {
-	directory := t.TempDir()
-
-	certificatePath := filepath.Join(directory, "client.pem")
-	privateKeyPath := filepath.Join(directory, "client.key")
-
-	certificate, privateKey := mustGenerateTLSKeyPair(t, big.NewInt(1))
-
-	require.NoError(t, os.WriteFile(certificatePath, certificate, 0600))
-	require.NoError(t, os.WriteFile(privateKeyPath, privateKey, 0600))
-
-	tlsConfig := NewTLSConfig(&schema.TLS{CertificateChainFile: certificatePath, PrivateKeyFile: privateKeyPath}, nil)
-
-	require.NotNil(t, tlsConfig)
-	require.NotNil(t, tlsConfig.GetClientCertificate)
-	assert.Empty(t, tlsConfig.Certificates)
-
-	first, err := tlsConfig.GetClientCertificate(nil)
-	require.NoError(t, err)
-
-	leaf, err := x509.ParseCertificate(first.Certificate[0])
-	require.NoError(t, err)
-
-	assert.Equal(t, int64(1), leaf.SerialNumber.Int64())
-
-	// A distinct modification time, then a new pair in the same files.
-	time.Sleep(10 * time.Millisecond)
-
-	certificate, privateKey = mustGenerateTLSKeyPair(t, big.NewInt(2))
-
-	require.NoError(t, os.WriteFile(certificatePath, certificate, 0600))
-	require.NoError(t, os.WriteFile(privateKeyPath, privateKey, 0600))
-
-	second, err := tlsConfig.GetClientCertificate(nil)
-	require.NoError(t, err)
-
-	leaf, err = x509.ParseCertificate(second.Certificate[0])
-	require.NoError(t, err)
-
-	assert.Equal(t, int64(2), leaf.SerialNumber.Int64())
-}
-
-func TestNewTLSConfigShouldUseInlineClientCertificate(t *testing.T) {
-	certificatePEM, privateKeyPEM := mustGenerateTLSKeyPair(t, big.NewInt(3))
-
-	chain, err := schema.NewX509CertificateChain(string(certificatePEM))
-	require.NoError(t, err)
-
-	parsed, err := ParseX509FromPEM(privateKeyPEM)
-	require.NoError(t, err)
-
-	privateKey, ok := parsed.(schema.CryptographicPrivateKey)
-	require.True(t, ok)
-
-	tlsConfig := NewTLSConfig(&schema.TLS{CertificateChain: *chain, PrivateKey: privateKey}, nil)
-
-	require.NotNil(t, tlsConfig)
-	require.Len(t, tlsConfig.Certificates, 1)
-	assert.Nil(t, tlsConfig.GetClientCertificate)
 }

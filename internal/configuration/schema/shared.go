@@ -19,8 +19,8 @@ type TLS struct {
 	PrivateKey       CryptographicPrivateKey `koanf:"private_key" yaml:"private_key,omitempty" toml:"private_key,omitempty" json:"private_key,omitempty" jsonschema:"title=Private Key" jsonschema_description:"The private key."`
 	CertificateChain X509CertificateChain    `koanf:"certificate_chain" yaml:"certificate_chain,omitempty" toml:"certificate_chain,omitempty" json:"certificate_chain,omitempty" jsonschema:"title=Certificate Chain" jsonschema_description:"The certificate chain."`
 
-	PrivateKeyFile       string `koanf:"private_key_file" yaml:"private_key_file,omitempty" toml:"private_key_file,omitempty" json:"private_key_file,omitempty" jsonschema:"title=Private Key File" jsonschema_description:"The path to the private key, read again when the file changes. Cannot be used with private_key."`
-	CertificateChainFile string `koanf:"certificate_chain_file" yaml:"certificate_chain_file,omitempty" toml:"certificate_chain_file,omitempty" json:"certificate_chain_file,omitempty" jsonschema:"title=Certificate Chain File" jsonschema_description:"The path to the certificate chain, read again when the file changes. Cannot be used with certificate_chain."`
+	PrivateKeyFile       string `koanf:"private_key_file" yaml:"private_key_file,omitempty" toml:"private_key_file,omitempty" json:"private_key_file,omitempty" jsonschema:"title=Private Key File" jsonschema_description:"The path to the private key, read for each TLS connection. Cannot be used with private_key."`
+	CertificateChainFile string `koanf:"certificate_chain_file" yaml:"certificate_chain_file,omitempty" toml:"certificate_chain_file,omitempty" json:"certificate_chain_file,omitempty" jsonschema:"title=Certificate Chain File" jsonschema_description:"The path to the certificate chain, read for each TLS connection. Cannot be used with certificate_chain."`
 }
 
 // ServerTimeouts represents server timeout configurations.

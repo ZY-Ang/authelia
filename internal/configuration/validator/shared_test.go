@@ -34,16 +34,34 @@ func TestValidateTLSConfig(t *testing.T) {
 }
 
 func TestValidateTLSConfigFiles(t *testing.T) {
-	configDefault := &schema.TLS{}
+	var (
+		config, configDefault *schema.TLS
+	)
 
-	assert.EqualError(t, ValidateTLSConfig(&schema.TLS{CertificateChainFile: "/a/cert.pem"}, configDefault),
+	configDefault = &schema.TLS{}
+
+	certificatePath, keyPath := "../test_resources/crypto/rsa.2048.crt", "../test_resources/crypto/rsa.2048.pem"
+
+	config = &schema.TLS{CertificateChainFile: certificatePath}
+
+	assert.EqualError(t, ValidateTLSConfig(config, configDefault),
 		"option 'certificate_chain_file' is invalid: it must be used with 'private_key_file'")
 
-	assert.NoError(t, ValidateTLSConfig(&schema.TLS{CertificateChainFile: "/a/cert.pem", PrivateKeyFile: "/a/key.pem"}, configDefault))
+	config = &schema.TLS{CertificateChainFile: certificatePath, PrivateKeyFile: keyPath}
 
-	assert.EqualError(t, ValidateTLSConfig(&schema.TLS{CertificateChain: certRSA4096, CertificateChainFile: "/a/cert.pem", PrivateKeyFile: "/a/key.pem"}, configDefault),
+	assert.NoError(t, ValidateTLSConfig(config, configDefault))
+
+	config = &schema.TLS{CertificateChain: certRSA4096, CertificateChainFile: certificatePath, PrivateKeyFile: keyPath}
+
+	assert.EqualError(t, ValidateTLSConfig(config, configDefault),
 		"option 'certificate_chain_file' is invalid: it cannot be used in addition to 'certificate_chain'")
 
-	assert.EqualError(t, ValidateTLSConfig(&schema.TLS{PrivateKey: keyRSA2048, CertificateChainFile: "/a/cert.pem", PrivateKeyFile: "/a/key.pem"}, configDefault),
+	config = &schema.TLS{PrivateKey: keyRSA2048, CertificateChainFile: certificatePath, PrivateKeyFile: keyPath}
+
+	assert.EqualError(t, ValidateTLSConfig(config, configDefault),
 		"option 'private_key_file' is invalid: it cannot be used in addition to 'private_key'")
+
+	config = &schema.TLS{CertificateChainFile: "../test_resources/crypto/does.not.exist.crt", PrivateKeyFile: keyPath}
+
+	assert.ErrorContains(t, ValidateTLSConfig(config, configDefault), "option 'certificate_chain_file' is invalid: the certificate pair could not be loaded")
 }

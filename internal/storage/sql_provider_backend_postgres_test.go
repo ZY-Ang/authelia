@@ -5,6 +5,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -12,10 +13,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -547,7 +551,7 @@ func TestDSNPostgreSQLFallbacks(t *testing.T) {
 				Servers: tc.servers,
 			}
 
-			dsnPostgreSQLFallbacks(config, x509.NewCertPool(), "", dsnConfig)
+			dsnPostgreSQLFallbacks(config, x509.NewCertPool(), dsnConfig)
 
 			tc.assert(t, dsnConfig)
 		})
@@ -649,7 +653,7 @@ func TestNewPostgreSQLProviderShouldRebindAllQueries(t *testing.T) {
 	}
 }
 
-func mustGenerateReloadingTestCA(t *testing.T, serial *big.Int) (certificate *x509.Certificate, pemBytes []byte, key *ecdsa.PrivateKey) {
+func mustGenerateTestCA(t *testing.T, serial *big.Int) (certificate *x509.Certificate, pemBytes []byte, key *ecdsa.PrivateKey) {
 	t.Helper()
 
 	var err error
@@ -681,10 +685,8 @@ func mustGenerateReloadingTestCA(t *testing.T, serial *big.Int) (certificate *x5
 	return certificate, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), key
 }
 
-func mustGenerateReloadingTestServer(t *testing.T, serial *big.Int, name string, ca *x509.Certificate, caKey *ecdsa.PrivateKey) (certificate *x509.Certificate) {
+func mustGenerateTestCertificate(t *testing.T, serial *big.Int, name string, usage x509.ExtKeyUsage, ca *x509.Certificate, caKey *ecdsa.PrivateKey) (certificate *x509.Certificate, certificatePEM, keyPEM []byte) {
 	t.Helper()
-
-	var err error
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -698,7 +700,7 @@ func mustGenerateReloadingTestServer(t *testing.T, serial *big.Int, name string,
 		NotBefore:    time.Now().Add(-time.Minute),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		ExtKeyUsage:  []x509.ExtKeyUsage{usage},
 	}
 
 	var der []byte
@@ -711,32 +713,207 @@ func mustGenerateReloadingTestServer(t *testing.T, serial *big.Int, name string,
 		t.Fatal(err)
 	}
 
-	return certificate
+	var keyDER []byte
+
+	if keyDER, err = x509.MarshalPKCS8PrivateKey(key); err != nil {
+		t.Fatal(err)
+	}
+
+	return certificate, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 }
 
-func TestPostgreSQLReloadingVerifyConnection(t *testing.T) {
+func writeTestPair(t *testing.T, directory, name string, certificatePEM, keyPEM []byte) (certificatePath, keyPath string) {
+	t.Helper()
+
+	certificatePath, keyPath = filepath.Join(directory, name+".crt"), filepath.Join(directory, name+".key")
+
+	require.NoError(t, os.WriteFile(certificatePath, certificatePEM, 0600))
+	require.NoError(t, os.WriteFile(keyPath, keyPEM, 0600))
+
+	return certificatePath, keyPath
+}
+
+func handshakeClientCertificateSerial(t *testing.T, clientConfig, serverConfig *tls.Config) (serial *big.Int) {
+	t.Helper()
+
+	clientConnection, serverConnection := net.Pipe()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	server := tls.Server(serverConnection, serverConfig)
+	serverErr := make(chan error, 1)
+
+	go func() { serverErr <- server.HandshakeContext(ctx) }()
+
+	client := tls.Client(clientConnection, clientConfig)
+
+	require.NoError(t, client.HandshakeContext(ctx))
+	require.NoError(t, <-serverErr)
+
+	require.Len(t, server.ConnectionState().PeerCertificates, 1)
+
+	return server.ConnectionState().PeerCertificates[0].SerialNumber
+}
+
+func TestPostgreSQLBeforeConnectReloadsCertificate(t *testing.T) {
 	directory := t.TempDir()
 
-	caOne, caOnePEM, caOneKey := mustGenerateReloadingTestCA(t, big.NewInt(1))
-	serverOne := mustGenerateReloadingTestServer(t, big.NewInt(2), "postgres", caOne, caOneKey)
-
+	caOne, caOnePEM, caOneKey := mustGenerateTestCA(t, big.NewInt(1))
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "ca.pem"), caOnePEM, 0600))
 
-	pool := newPostgreSQLReloadingCertPool(directory)
-	verify := newPostgreSQLReloadingVerifyConnectionFunc("postgres", pool.Get)
+	_, certificateOnePEM, keyOnePEM := mustGenerateTestCertificate(t, big.NewInt(2), "client", x509.ExtKeyUsageClientAuth, caOne, caOneKey)
+	certificatePath, keyPath := writeTestPair(t, directory, "client", certificateOnePEM, keyOnePEM)
 
-	assert.NoError(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverOne}}))
+	config := &schema.StoragePostgreSQL{
+		TLS: &schema.TLS{CertificateChainFile: certificatePath, PrivateKeyFile: keyPath, SkipVerify: true},
+	}
 
-	time.Sleep(10 * time.Millisecond)
+	hook := newPostgreSQLBeforeConnect(config, directory, x509.NewCertPool())
 
-	caTwo, caTwoPEM, caTwoKey := mustGenerateReloadingTestCA(t, big.NewInt(3))
-	serverTwo := mustGenerateReloadingTestServer(t, big.NewInt(4), "postgres", caTwo, caTwoKey)
+	_, serverOnePEM, serverOneKeyPEM := mustGenerateTestCertificate(t, big.NewInt(3), "postgres", x509.ExtKeyUsageServerAuth, caOne, caOneKey)
 
+	serverOnePair, err := tls.X509KeyPair(serverOnePEM, serverOneKeyPEM)
+	require.NoError(t, err)
+
+	connConfig, err := pgx.ParseConfig("")
+	require.NoError(t, err)
+	require.NoError(t, hook(context.Background(), connConfig))
+
+	assert.Equal(t, big.NewInt(2), handshakeClientCertificateSerial(t, connConfig.TLSConfig, &tls.Config{
+		Certificates: []tls.Certificate{serverOnePair},
+		ClientAuth:   tls.RequireAnyClientCert,
+	}))
+
+	// A connection made after the pair and the CA are replaced uses the new certificate and trusts the new CA.
+	caTwo, caTwoPEM, caTwoKey := mustGenerateTestCA(t, big.NewInt(4))
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "ca.pem"), caTwoPEM, 0600))
 
-	// The rotated CA replaces the old one: the first server is no longer trusted and the second is.
-	assert.Error(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverOne}}))
-	assert.NoError(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverTwo}}))
+	_, certificateTwoPEM, keyTwoPEM := mustGenerateTestCertificate(t, big.NewInt(5), "client", x509.ExtKeyUsageClientAuth, caTwo, caTwoKey)
+	require.NoError(t, os.WriteFile(certificatePath, certificateTwoPEM, 0600))
+	require.NoError(t, os.WriteFile(keyPath, keyTwoPEM, 0600))
 
-	assert.Error(t, newPostgreSQLReloadingVerifyConnectionFunc("other", pool.Get)(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverTwo}}))
+	serverTwo, serverTwoPEM, serverTwoKeyPEM := mustGenerateTestCertificate(t, big.NewInt(6), "postgres", x509.ExtKeyUsageServerAuth, caTwo, caTwoKey)
+
+	serverTwoPair, err := tls.X509KeyPair(serverTwoPEM, serverTwoKeyPEM)
+	require.NoError(t, err)
+
+	nextConfig, err := pgx.ParseConfig("")
+	require.NoError(t, err)
+	require.NoError(t, hook(context.Background(), nextConfig))
+
+	assert.Equal(t, big.NewInt(5), handshakeClientCertificateSerial(t, nextConfig.TLSConfig, &tls.Config{
+		Certificates: []tls.Certificate{serverTwoPair},
+		ClientAuth:   tls.RequireAnyClientCert,
+	}))
+
+	_, err = serverTwo.Verify(x509.VerifyOptions{Roots: nextConfig.TLSConfig.RootCAs, DNSName: "postgres"})
+	assert.NoError(t, err)
+}
+
+func TestPostgreSQLBeforeConnectPreservesServerName(t *testing.T) {
+	directory := t.TempDir()
+
+	ca, caPEM, caKey := mustGenerateTestCA(t, big.NewInt(1))
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "ca.pem"), caPEM, 0600))
+
+	_, certificatePEM, keyPEM := mustGenerateTestCertificate(t, big.NewInt(2), "client", x509.ExtKeyUsageClientAuth, ca, caKey)
+	certificatePath, keyPath := writeTestPair(t, directory, "client", certificatePEM, keyPEM)
+
+	config := &schema.StoragePostgreSQL{
+		TLS: &schema.TLS{CertificateChainFile: certificatePath, PrivateKeyFile: keyPath},
+	}
+
+	hook := newPostgreSQLBeforeConnect(config, "", x509.NewCertPool())
+
+	connConfig, err := pgx.ParseConfig("")
+	require.NoError(t, err)
+
+	connConfig.TLSConfig = &tls.Config{ServerName: "postgres.example"}
+
+	require.NoError(t, hook(context.Background(), connConfig))
+	assert.Equal(t, "postgres.example", connConfig.TLSConfig.ServerName)
+}
+
+func TestDSNPostgreSQLHasNoFallbackWithoutServers(t *testing.T) {
+	address, err := schema.NewAddress("tcp://postgres.example:5432")
+	require.NoError(t, err)
+
+	config := &schema.StoragePostgreSQL{
+		Address:  &schema.AddressTCP{Address: *address},
+		Database: "authelia",
+		Username: "authelia",
+		TLS:      &schema.TLS{ServerName: "postgres.example"},
+	}
+
+	assert.Empty(t, dsnPostgreSQL(config, x509.NewCertPool()).Fallbacks)
+}
+
+func TestPostgreSQLTLSNeverFallsBackToPlaintext(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	defer listener.Close()
+
+	received := make(chan []byte, 1)
+
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			received <- nil
+
+			return
+		}
+
+		defer conn.Close()
+
+		request := make([]byte, 8)
+
+		if _, err = io.ReadFull(conn, request); err != nil {
+			received <- nil
+
+			return
+		}
+
+		// Refuse TLS as a server without TLS support does.
+		_, _ = conn.Write([]byte{'N'})
+
+		_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+		remainder := make([]byte, 1)
+
+		if n, _ := conn.Read(remainder); n != 0 {
+			request = append(request, remainder...)
+		}
+
+		received <- request
+	}()
+
+	host, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+
+	portNumber, err := strconv.ParseUint(port, 10, 16)
+	require.NoError(t, err)
+
+	config := &schema.StoragePostgreSQL{TLS: &schema.TLS{SkipVerify: true}}
+
+	hook := newPostgreSQLBeforeConnect(config, "", x509.NewCertPool())
+
+	connConfig, err := pgx.ParseConfig("")
+	require.NoError(t, err)
+
+	connConfig.Host, connConfig.Port = host, uint16(portNumber)
+	connConfig.ConnectTimeout = time.Second
+
+	require.NoError(t, hook(context.Background(), connConfig))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = pgx.ConnectConfig(ctx, connConfig)
+	require.Error(t, err)
+
+	// Only the SSLRequest arrives: a fallback to plaintext would also send a StartupMessage.
+	assert.Len(t, <-received, 8)
 }

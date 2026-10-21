@@ -315,7 +315,7 @@ tls:
     -----BEGIN PRIVATE KEY-----
     ...
     -----END PRIVATE KEY-----
-  # Or, instead of the two values above, the paths of the same pair, read again when they change:
+  # Or, instead of the two values above, the paths of the same pair, read for each TLS connection:
   certificate_chain_file: '/path/to/certificate_chain.pem'
   private_key_file: '/path/to/private_key.pem'
 ```
@@ -381,8 +381,8 @@ The value must be one private key encoded in the DER base64 ([RFC4648]) encoded 
 The path to a file containing the certificate chain described by [certificate_chain](#certificate_chain). It cannot be
 used with [certificate_chain](#certificate_chain), and must be used with [private_key_file](#private_key_file).
 
-The file is read on each TLS handshake and read again when it or the private key file changes, so a certificate pair
-replaced on disk is used without a restart.
+The file is read for each TLS handshake, so a certificate pair replaced on disk is used by the next connection without
+a restart.
 
 #### private_key_file
 

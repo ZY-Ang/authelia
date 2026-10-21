@@ -58,5 +58,11 @@ func ValidateTLSConfig(config *schema.TLS, configDefault *schema.TLS) (err error
 		return errors.New("option 'certificate_chain_file' is invalid: it must be used with 'private_key_file'")
 	}
 
+	if config.CertificateChainFile != "" {
+		if _, err = tls.LoadX509KeyPair(config.CertificateChainFile, config.PrivateKeyFile); err != nil {
+			return fmt.Errorf("option 'certificate_chain_file' is invalid: the certificate pair could not be loaded: %w", err)
+		}
+	}
+
 	return nil
 }

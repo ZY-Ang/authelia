@@ -30,7 +30,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/crypto/hkdf"
@@ -331,7 +330,15 @@ func NewTLSConfig(config *schema.TLS, rootCAs *x509.CertPool) (tlsConfig *tls.Co
 
 	switch {
 	case config.CertificateChainFile != "" && config.PrivateKeyFile != "":
-		tlsConfig.GetClientCertificate = newReloadingClientCertificate(config.CertificateChainFile, config.PrivateKeyFile)
+		// Read the pair for each handshake so a pair replaced on disk is used by the next connection.
+		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			certificate, err := tls.LoadX509KeyPair(config.CertificateChainFile, config.PrivateKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load the certificate pair '%s' and '%s': %w", config.CertificateChainFile, config.PrivateKeyFile, err)
+			}
+
+			return &certificate, nil
+		}
 	case config.PrivateKey != nil && config.CertificateChain.HasCertificates():
 		tlsConfig.Certificates = []tls.Certificate{
 			{
@@ -343,66 +350,6 @@ func NewTLSConfig(config *schema.TLS, rootCAs *x509.CertPool) (tlsConfig *tls.Co
 	}
 
 	return tlsConfig
-}
-
-// reloadingClientCertificate loads a certificate pair from disk and reads it again when either file changes.
-type reloadingClientCertificate struct {
-	certificatePath, privateKeyPath string
-
-	mutex   sync.Mutex
-	modTime time.Time
-	size    int64
-	pair    tls.Certificate
-}
-
-func newReloadingClientCertificate(certificatePath, privateKeyPath string) func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-	reloader := &reloadingClientCertificate{certificatePath: certificatePath, privateKeyPath: privateKeyPath}
-
-	return reloader.GetClientCertificate
-}
-
-// GetClientCertificate returns the certificate pair, rereading it when either file changed since the last read.
-func (r *reloadingClientCertificate) GetClientCertificate(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	modTime, size, err := pairState(r.certificatePath, r.privateKeyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if r.pair.PrivateKey == nil || !modTime.Equal(r.modTime) || size != r.size {
-		var pair tls.Certificate
-
-		if pair, err = tls.LoadX509KeyPair(r.certificatePath, r.privateKeyPath); err != nil {
-			return nil, fmt.Errorf("failed to load the certificate pair '%s' and '%s': %w", r.certificatePath, r.privateKeyPath, err)
-		}
-
-		r.pair, r.modTime, r.size = pair, modTime, size
-	}
-
-	return &r.pair, nil
-}
-
-// pairState returns the most recent modification time and the combined size of two files.
-func pairState(firstPath, secondPath string) (modTime time.Time, size int64, err error) {
-	var info os.FileInfo
-
-	if info, err = os.Stat(firstPath); err != nil {
-		return time.Time{}, 0, fmt.Errorf("failed to stat '%s': %w", firstPath, err)
-	}
-
-	modTime, size = info.ModTime(), info.Size()
-
-	if info, err = os.Stat(secondPath); err != nil {
-		return time.Time{}, 0, fmt.Errorf("failed to stat '%s': %w", secondPath, err)
-	}
-
-	if second := info.ModTime(); second.After(modTime) {
-		modTime = second
-	}
-
-	return modTime, size + info.Size(), nil
 }
 
 // NewX509CertPool generates a [x509.CertPool] from the system PKI and the directory specified using the standard factory.
