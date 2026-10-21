@@ -5,12 +5,20 @@
 package storage
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -539,7 +547,7 @@ func TestDSNPostgreSQLFallbacks(t *testing.T) {
 				Servers: tc.servers,
 			}
 
-			dsnPostgreSQLFallbacks(config, x509.NewCertPool(), dsnConfig)
+			dsnPostgreSQLFallbacks(config, x509.NewCertPool(), "", dsnConfig)
 
 			tc.assert(t, dsnConfig)
 		})
@@ -639,4 +647,96 @@ func TestNewPostgreSQLProviderShouldRebindAllQueries(t *testing.T) {
 		assert.NotEmpty(t, query, "field %s does not have a query assigned to it", field.Name)
 		assert.NotContains(t, query, "?", "field %s contains a '?' placeholder which PostgreSQL does not support, it must either be rebound via (*sqlx.DB).Rebind or assigned a PostgreSQL specific query", field.Name)
 	}
+}
+
+func mustGenerateReloadingTestCA(t *testing.T, serial *big.Int) (certificate *x509.Certificate, pemBytes []byte, key *ecdsa.PrivateKey) {
+	t.Helper()
+
+	var err error
+
+	if key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
+		t.Fatal(err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "test ca"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	var der []byte
+
+	if der, err = x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key); err != nil {
+		t.Fatal(err)
+	}
+
+	if certificate, err = x509.ParseCertificate(der); err != nil {
+		t.Fatal(err)
+	}
+
+	return certificate, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), key
+}
+
+func mustGenerateReloadingTestServer(t *testing.T, serial *big.Int, name string, ca *x509.Certificate, caKey *ecdsa.PrivateKey) (certificate *x509.Certificate) {
+	t.Helper()
+
+	var err error
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: name},
+		DNSNames:     []string{name},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	var der []byte
+
+	if der, err = x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey); err != nil {
+		t.Fatal(err)
+	}
+
+	if certificate, err = x509.ParseCertificate(der); err != nil {
+		t.Fatal(err)
+	}
+
+	return certificate
+}
+
+func TestPostgreSQLReloadingVerifyConnection(t *testing.T) {
+	directory := t.TempDir()
+
+	caOne, caOnePEM, caOneKey := mustGenerateReloadingTestCA(t, big.NewInt(1))
+	serverOne := mustGenerateReloadingTestServer(t, big.NewInt(2), "postgres", caOne, caOneKey)
+
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "ca.pem"), caOnePEM, 0600))
+
+	pool := newPostgreSQLReloadingCertPool(directory)
+	verify := newPostgreSQLReloadingVerifyConnectionFunc("postgres", pool.Get)
+
+	assert.NoError(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverOne}}))
+
+	time.Sleep(10 * time.Millisecond)
+
+	caTwo, caTwoPEM, caTwoKey := mustGenerateReloadingTestCA(t, big.NewInt(3))
+	serverTwo := mustGenerateReloadingTestServer(t, big.NewInt(4), "postgres", caTwo, caTwoKey)
+
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "ca.pem"), caTwoPEM, 0600))
+
+	// The rotated CA replaces the old one: the first server is no longer trusted and the second is.
+	assert.Error(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverOne}}))
+	assert.NoError(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverTwo}}))
+
+	assert.Error(t, newPostgreSQLReloadingVerifyConnectionFunc("other", pool.Get)(tls.ConnectionState{PeerCertificates: []*x509.Certificate{serverTwo}}))
 }

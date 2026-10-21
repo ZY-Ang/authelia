@@ -175,4 +175,8 @@ By default Authelia uses the system certificate trust for TLS certificate verifi
 [certificates_directory](../miscellaneous/introduction.md#certificates_directory) global option can be used to augment
 this.
 
+The server certificate is verified against a pool rebuilt whenever an entry in the certificates directory changes, and
+a client pair given with `certificate_chain_file` and `private_key_file` is read again when either file changes, so
+certificates replaced on disk are used without a restart.
+
 [PostgreSQL]: https://www.postgresql.org/

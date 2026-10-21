@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -31,7 +33,7 @@ type PostgreSQLProvider struct {
 func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provider *PostgreSQLProvider, err error) {
 	var p SQLProvider
 
-	if p, err = NewSQLProvider(config, providerPostgres, "pgx", dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool)); err != nil {
+	if p, err = NewSQLProvider(config, providerPostgres, "pgx", dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool, config.CertificatesDirectory)); err != nil {
 		return nil, err
 	}
 
@@ -192,14 +194,14 @@ func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPo
 	return provider, nil
 }
 
-func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool) (dsn string) {
+func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool, certificatesDirectory string) (dsn string) {
 	dsnConfig, _ := pgx.ParseConfig("")
 
 	dsnConfig.Host, dsnConfig.Port = dsnPostgreSQLHostPort(config.Address)
 	dsnConfig.Database = config.Database
 	dsnConfig.User = config.Username
 	dsnConfig.Password = config.Password
-	dsnConfig.TLSConfig = loadPostgreSQLTLSConfig(config, globalCACertPool)
+	dsnConfig.TLSConfig = loadPostgreSQLTLSConfig(config, globalCACertPool, certificatesDirectory)
 	dsnConfig.ConnectTimeout = config.Timeout
 	dsnConfig.RuntimeParams = map[string]string{
 		"application_name": fmt.Sprintf(driverParameterFmtAppName, utils.Version()),
@@ -207,7 +209,7 @@ func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.Cert
 	}
 
 	if len(config.Servers) != 0 {
-		dsnPostgreSQLFallbacks(config, globalCACertPool, dsnConfig)
+		dsnPostgreSQLFallbacks(config, globalCACertPool, certificatesDirectory, dsnConfig)
 	}
 
 	return stdlib.RegisterConnConfig(dsnConfig)
@@ -240,12 +242,12 @@ func dsnPostgreSQLHostPort(address *schema.AddressTCP) (host string, port uint16
 	return host, port
 }
 
-func dsnPostgreSQLFallbacks(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool, dsnConfig *pgx.ConnConfig) {
+func dsnPostgreSQLFallbacks(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool, certificatesDirectory string, dsnConfig *pgx.ConnConfig) {
 	dsnConfig.Fallbacks = make([]*pgconn.FallbackConfig, len(config.Servers))
 
 	for i, server := range config.Servers {
 		fallback := &pgconn.FallbackConfig{
-			TLSConfig: loadPostgreSQLModernTLSConfig(server.TLS, globalCACertPool),
+			TLSConfig: loadPostgreSQLModernTLSConfig(server.TLS, globalCACertPool, certificatesDirectory),
 		}
 
 		fallback.Host, fallback.Port = dsnPostgreSQLHostPort(server.Address)
@@ -258,9 +260,9 @@ func dsnPostgreSQLFallbacks(config *schema.StoragePostgreSQL, globalCACertPool *
 	}
 }
 
-func loadPostgreSQLTLSConfig(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool) (tlsConfig *tls.Config) {
+func loadPostgreSQLTLSConfig(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool, certificatesDirectory string) (tlsConfig *tls.Config) {
 	if config.TLS != nil {
-		return loadPostgreSQLModernTLSConfig(config.TLS, globalCACertPool)
+		return loadPostgreSQLModernTLSConfig(config.TLS, globalCACertPool, certificatesDirectory)
 	} else if config.SSL != nil { //nolint:staticcheck
 		return loadPostgreSQLLegacyTLSConfig(config, globalCACertPool)
 	}
@@ -268,8 +270,23 @@ func loadPostgreSQLTLSConfig(config *schema.StoragePostgreSQL, globalCACertPool 
 	return nil
 }
 
-func loadPostgreSQLModernTLSConfig(config *schema.TLS, globalCACertPool *x509.CertPool) (tlsConfig *tls.Config) {
-	return utils.NewTLSConfig(config, globalCACertPool)
+func loadPostgreSQLModernTLSConfig(config *schema.TLS, globalCACertPool *x509.CertPool, certificatesDirectory string) (tlsConfig *tls.Config) {
+	if tlsConfig = utils.NewTLSConfig(config, globalCACertPool); tlsConfig == nil {
+		return nil
+	}
+
+	if config.SkipVerify || certificatesDirectory == "" {
+		return tlsConfig
+	}
+
+	// The pool built at start never changes, but a certificate issuer can replace the trusted CAs in this
+	// directory, so the server certificate is verified here against a pool rebuilt whenever the directory changes.
+	pool := newPostgreSQLReloadingCertPool(certificatesDirectory)
+
+	tlsConfig.InsecureSkipVerify = true
+	tlsConfig.VerifyConnection = newPostgreSQLReloadingVerifyConnectionFunc(tlsConfig.ServerName, pool.Get)
+
+	return tlsConfig
 }
 
 //nolint:staticcheck // Used for legacy purposes.
@@ -412,6 +429,83 @@ func newPostgreSQLVerifyPeerCertificateFunc(config *tls.Config) func(certificate
 		}
 
 		_, err = certs[0].Verify(opts)
+
+		return err
+	}
+}
+
+// postgreSQLReloadingCertPool rebuilds the trust pool from the certificates directory when an entry changes.
+type postgreSQLReloadingCertPool struct {
+	directory string
+
+	mutex     sync.Mutex
+	signature string
+	pool      *x509.CertPool
+}
+
+func newPostgreSQLReloadingCertPool(directory string) (reloader *postgreSQLReloadingCertPool) {
+	return &postgreSQLReloadingCertPool{directory: directory}
+}
+
+// Get returns the trust pool, rebuilding it when the directory's entries changed since the last call.
+func (r *postgreSQLReloadingCertPool) Get() *x509.CertPool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	signature := directorySignature(r.directory)
+
+	if r.pool == nil || signature != r.signature {
+		r.pool, _, _ = utils.NewX509CertPool(r.directory)
+		r.signature = signature
+	}
+
+	return r.pool
+}
+
+// directorySignature describes the names, sizes and modification times of a directory's entries.
+func directorySignature(directory string) (signature string) {
+	entries, err := os.ReadDir(directory)
+
+	if err != nil {
+		return "error:" + err.Error()
+	}
+
+	var builder strings.Builder
+
+	for _, entry := range entries {
+		info, err := entry.Info()
+
+		if err != nil {
+			fmt.Fprintf(&builder, "%s:error;", entry.Name())
+
+			continue
+		}
+
+		fmt.Fprintf(&builder, "%s:%d:%d;", entry.Name(), info.Size(), info.ModTime().UnixNano())
+	}
+
+	return builder.String()
+}
+
+// newPostgreSQLReloadingVerifyConnectionFunc verifies the server certificate against a pool fetched for each
+// connection, so a CA rotated on disk is trusted without a restart.
+func newPostgreSQLReloadingVerifyConnectionFunc(serverName string, roots func() *x509.CertPool) func(tls.ConnectionState) error {
+	return func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 {
+			return errors.New("failed to parse certificate from server: no peer certificates")
+		}
+
+		opts := x509.VerifyOptions{
+			Roots:         roots(),
+			Intermediates: x509.NewCertPool(),
+			DNSName:       serverName,
+		}
+
+		for _, certificate := range state.PeerCertificates[1:] {
+			opts.Intermediates.AddCert(certificate)
+		}
+
+		_, err := state.PeerCertificates[0].Verify(opts)
 
 		return err
 	}
