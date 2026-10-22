@@ -332,7 +332,7 @@ func NewTLSConfig(config *schema.TLS, rootCAs *x509.CertPool) (tlsConfig *tls.Co
 		}
 	}
 
-	return &tls.Config{
+	tlsConfig = &tls.Config{
 		ServerName:         config.ServerName,
 		InsecureSkipVerify: config.SkipVerify, //nolint:gosec // Informed choice by user. Off by default.
 		MinVersion:         config.MinimumVersion.MinVersion(),
@@ -340,6 +340,19 @@ func NewTLSConfig(config *schema.TLS, rootCAs *x509.CertPool) (tlsConfig *tls.Co
 		RootCAs:            rootCAs,
 		Certificates:       certificates,
 	}
+
+	if config.CertificateChainPath != "" && config.PrivateKeyPath != "" {
+		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			certificate, err := tls.LoadX509KeyPair(config.CertificateChainPath, config.PrivateKeyPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load the certificate pair '%s' and '%s': %w", config.CertificateChainPath, config.PrivateKeyPath, err)
+			}
+
+			return &certificate, nil
+		}
+	}
+
+	return tlsConfig
 }
 
 // NewX509CertPool generates a [x509.CertPool] from the system PKI and the directory specified using the standard factory.

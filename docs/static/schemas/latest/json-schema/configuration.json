@@ -4347,6 +4347,16 @@
           "$ref": "#/$defs/X509CertificateChain",
           "title": "Certificate Chain",
           "description": "The certificate chain."
+        },
+        "private_key_path": {
+          "type": "string",
+          "title": "Private Key Path",
+          "description": "The path to the private key, read for each TLS connection. Cannot be used with private_key."
+        },
+        "certificate_chain_path": {
+          "type": "string",
+          "title": "Certificate Chain Path",
+          "description": "The path to the certificate chain, read for each TLS connection. Cannot be used with certificate_chain."
         }
       },
       "additionalProperties": false,

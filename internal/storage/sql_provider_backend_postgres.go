@@ -5,6 +5,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/rpadovani/sqlx-v2"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/utils"
@@ -31,9 +33,20 @@ type PostgreSQLProvider struct {
 func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provider *PostgreSQLProvider, err error) {
 	var p SQLProvider
 
-	if p, err = NewSQLProvider(config, providerPostgres, "pgx", dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool)); err != nil {
+	connConfig := dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool)
+	dsn := stdlib.RegisterConnConfig(connConfig)
+
+	defer stdlib.UnregisterConnConfig(dsn)
+
+	if p, err = NewSQLProvider(config, providerPostgres, "pgx", dsn); err != nil {
 		return nil, err
 	}
+
+	// The handle opened above is lazy and has not connected. Replace it with one that runs the BeforeConnect hook,
+	// which loads the TLS configuration again for every new connection.
+	_ = p.db.Close()
+
+	p.db = &SQLXWrapDB{sqlx.NewDb(stdlib.OpenDB(*connConfig, stdlib.OptionBeforeConnect(newPostgreSQLBeforeConnect(config.Storage.PostgreSQL, config.CertificatesDirectory, caCertPool))), "pgx")}
 
 	provider = &PostgreSQLProvider{
 		SQLProvider: p,
@@ -192,8 +205,12 @@ func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPo
 	return provider, nil
 }
 
-func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool) (dsn string) {
+func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool) *pgx.ConnConfig {
 	dsnConfig, _ := pgx.ParseConfig("")
+
+	// Strip any pgx-generated fallback so the connection cannot downgrade to plaintext or non-verifying TLS if the
+	// handshake fails.
+	dsnConfig.Fallbacks = nil
 
 	dsnConfig.Host, dsnConfig.Port = dsnPostgreSQLHostPort(config.Address)
 	dsnConfig.Database = config.Database
@@ -210,7 +227,7 @@ func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.Cert
 		dsnPostgreSQLFallbacks(config, globalCACertPool, dsnConfig)
 	}
 
-	return stdlib.RegisterConnConfig(dsnConfig)
+	return dsnConfig
 }
 
 func dsnPostgreSQLHostPort(address *schema.AddressTCP) (host string, port uint16) {
@@ -414,5 +431,35 @@ func newPostgreSQLVerifyPeerCertificateFunc(config *tls.Config) func(certificate
 		_, err = certs[0].Verify(opts)
 
 		return err
+	}
+}
+
+// newPostgreSQLBeforeConnect returns a hook that builds the TLS configuration again for every new connection, so a
+// client certificate pair or a certificates directory replaced on disk is used without a restart.
+func newPostgreSQLBeforeConnect(config *schema.StoragePostgreSQL, certificatesDirectory string, globalCACertPool *x509.CertPool) func(context.Context, *pgx.ConnConfig) error {
+	return func(_ context.Context, connConfig *pgx.ConnConfig) error {
+		rootCAs := globalCACertPool
+
+		if certificatesDirectory != "" {
+			var errs []error
+
+			if rootCAs, _, errs = utils.NewX509CertPool(certificatesDirectory); len(errs) != 0 {
+				return fmt.Errorf("failed to load the certificates directory '%s': %w", certificatesDirectory, errors.Join(errs...))
+			}
+		}
+
+		tlsConfig := loadPostgreSQLTLSConfig(config, rootCAs)
+
+		if tlsConfig != nil && tlsConfig.ServerName == "" && connConfig.TLSConfig != nil {
+			tlsConfig.ServerName = connConfig.TLSConfig.ServerName
+		}
+
+		connConfig.TLSConfig = tlsConfig
+
+		if len(config.Servers) != 0 {
+			dsnPostgreSQLFallbacks(config, rootCAs, connConfig)
+		}
+
+		return nil
 	}
 }

@@ -5,9 +5,11 @@
 package storage
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -639,4 +641,60 @@ func TestNewPostgreSQLProviderShouldRebindAllQueries(t *testing.T) {
 		assert.NotEmpty(t, query, "field %s does not have a query assigned to it", field.Name)
 		assert.NotContains(t, query, "?", "field %s contains a '?' placeholder which PostgreSQL does not support, it must either be rebound via (*sqlx.DB).Rebind or assigned a PostgreSQL specific query", field.Name)
 	}
+}
+
+func TestNewPostgreSQLBeforeConnectShouldReloadTLSConfig(t *testing.T) {
+	dir, crypto := t.TempDir(), filepath.Join("..", "configuration", "test_resources", "crypto")
+
+	copyFile := func(src, dst string) {
+		data, err := os.ReadFile(filepath.Join(crypto, src))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(dst, data, 0o600))
+	}
+
+	certPath, keyPath, caDir := filepath.Join(dir, "client.crt"), filepath.Join(dir, "client.pem"), filepath.Join(dir, "ca")
+
+	require.NoError(t, os.Mkdir(caDir, 0o700))
+	copyFile("rsa.2048.crt", certPath)
+	copyFile("rsa.2048.pem", keyPath)
+
+	address, err := schema.NewAddress("tcp://localhost:5432")
+	require.NoError(t, err)
+
+	config := &schema.StoragePostgreSQL{StorageSQL: schema.StorageSQL{
+		Address: &schema.AddressTCP{Address: *address},
+		TLS:     &schema.TLS{CertificateChainPath: certPath, PrivateKeyPath: keyPath},
+	}}
+
+	connConfig := dsnPostgreSQL(config, x509.NewCertPool())
+	connConfig.TLSConfig.ServerName = "postgres.example.com"
+
+	assert.Empty(t, connConfig.Fallbacks)
+
+	hook := newPostgreSQLBeforeConnect(config, caDir, x509.NewCertPool())
+
+	connect := func() (*tls.Config, *tls.Certificate) {
+		next := *connConfig
+
+		require.NoError(t, hook(context.Background(), &next))
+
+		certificate, err := next.TLSConfig.GetClientCertificate(nil)
+		require.NoError(t, err)
+
+		assert.Equal(t, "postgres.example.com", next.TLSConfig.ServerName)
+		assert.Empty(t, next.Fallbacks)
+
+		return next.TLSConfig, certificate
+	}
+
+	first, firstCert := connect()
+
+	copyFile("rsa.4096.crt", certPath)
+	copyFile("rsa.4096.pem", keyPath)
+	copyFile("ca.rsa.2048.crt", filepath.Join(caDir, "ca.crt"))
+
+	second, secondCert := connect()
+
+	assert.False(t, first.RootCAs.Equal(second.RootCAs))
+	assert.NotEqual(t, firstCert.Certificate[0], secondCert.Certificate[0])
 }

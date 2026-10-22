@@ -175,4 +175,8 @@ By default Authelia uses the system certificate trust for TLS certificate verifi
 [certificates_directory](../miscellaneous/introduction.md#certificates_directory) global option can be used to augment
 this.
 
+The TLS configuration, including the `certificate_chain_path` and `private_key_path` pair and the
+[certificates_directory](../miscellaneous/introduction.md#certificates_directory), is loaded again for every new
+connection, so certificates replaced on disk are used without a restart.
+
 [PostgreSQL]: https://www.postgresql.org/

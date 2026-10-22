@@ -46,5 +46,17 @@ func ValidateTLSConfig(config *schema.TLS, configDefault *schema.TLS) (err error
 		return errors.New("option 'certificate_chain' is invalid: provided certificate chain does not contain the public key for the private key provided")
 	}
 
+	if config.CertificateChainPath != "" && config.CertificateChain.HasCertificates() {
+		return errors.New("option 'certificate_chain_path' is invalid: it cannot be used in addition to 'certificate_chain'")
+	}
+
+	if config.PrivateKeyPath != "" && config.PrivateKey != nil {
+		return errors.New("option 'private_key_path' is invalid: it cannot be used in addition to 'private_key'")
+	}
+
+	if (config.CertificateChainPath != "") != (config.PrivateKeyPath != "") {
+		return errors.New("option 'certificate_chain_path' is invalid: it must be used with 'private_key_path'")
+	}
+
 	return nil
 }

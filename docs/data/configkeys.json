@@ -335,6 +335,11 @@
     "env": "AUTHELIA_AUTHENTICATION_BACKEND_LDAP_TLS_CERTIFICATE_CHAIN_FILE"
   },
   {
+    "path": "authentication_backend.ldap.tls.certificate_chain_path",
+    "secret": false,
+    "env": "AUTHELIA_AUTHENTICATION_BACKEND_LDAP_TLS_CERTIFICATE_CHAIN_PATH"
+  },
+  {
     "path": "authentication_backend.ldap.tls.maximum_version",
     "secret": false,
     "env": "AUTHELIA_AUTHENTICATION_BACKEND_LDAP_TLS_MAXIMUM_VERSION"
@@ -348,6 +353,11 @@
     "path": "authentication_backend.ldap.tls.private_key",
     "secret": true,
     "env": "AUTHELIA_AUTHENTICATION_BACKEND_LDAP_TLS_PRIVATE_KEY_FILE"
+  },
+  {
+    "path": "authentication_backend.ldap.tls.private_key_path",
+    "secret": false,
+    "env": "AUTHELIA_AUTHENTICATION_BACKEND_LDAP_TLS_PRIVATE_KEY_PATH"
   },
   {
     "path": "authentication_backend.ldap.tls.server_name",
@@ -645,6 +655,11 @@
     "env": "AUTHELIA_NOTIFIER_SMTP_TLS_CERTIFICATE_CHAIN_FILE"
   },
   {
+    "path": "notifier.smtp.tls.certificate_chain_path",
+    "secret": false,
+    "env": "AUTHELIA_NOTIFIER_SMTP_TLS_CERTIFICATE_CHAIN_PATH"
+  },
+  {
     "path": "notifier.smtp.tls.maximum_version",
     "secret": false,
     "env": "AUTHELIA_NOTIFIER_SMTP_TLS_MAXIMUM_VERSION"
@@ -658,6 +673,11 @@
     "path": "notifier.smtp.tls.private_key",
     "secret": true,
     "env": "AUTHELIA_NOTIFIER_SMTP_TLS_PRIVATE_KEY_FILE"
+  },
+  {
+    "path": "notifier.smtp.tls.private_key_path",
+    "secret": false,
+    "env": "AUTHELIA_NOTIFIER_SMTP_TLS_PRIVATE_KEY_PATH"
   },
   {
     "path": "notifier.smtp.tls.server_name",
@@ -1030,6 +1050,11 @@
     "env": "AUTHELIA_SESSION_REDIS_TLS_CERTIFICATE_CHAIN_FILE"
   },
   {
+    "path": "session.redis.tls.certificate_chain_path",
+    "secret": false,
+    "env": "AUTHELIA_SESSION_REDIS_TLS_CERTIFICATE_CHAIN_PATH"
+  },
+  {
     "path": "session.redis.tls.maximum_version",
     "secret": false,
     "env": "AUTHELIA_SESSION_REDIS_TLS_MAXIMUM_VERSION"
@@ -1043,6 +1068,11 @@
     "path": "session.redis.tls.private_key",
     "secret": true,
     "env": "AUTHELIA_SESSION_REDIS_TLS_PRIVATE_KEY_FILE"
+  },
+  {
+    "path": "session.redis.tls.private_key_path",
+    "secret": false,
+    "env": "AUTHELIA_SESSION_REDIS_TLS_PRIVATE_KEY_PATH"
   },
   {
     "path": "session.redis.tls.server_name",
@@ -1110,6 +1140,11 @@
     "env": "AUTHELIA_STORAGE_MYSQL_TLS_CERTIFICATE_CHAIN_FILE"
   },
   {
+    "path": "storage.mysql.tls.certificate_chain_path",
+    "secret": false,
+    "env": "AUTHELIA_STORAGE_MYSQL_TLS_CERTIFICATE_CHAIN_PATH"
+  },
+  {
     "path": "storage.mysql.tls.maximum_version",
     "secret": false,
     "env": "AUTHELIA_STORAGE_MYSQL_TLS_MAXIMUM_VERSION"
@@ -1123,6 +1158,11 @@
     "path": "storage.mysql.tls.private_key",
     "secret": true,
     "env": "AUTHELIA_STORAGE_MYSQL_TLS_PRIVATE_KEY_FILE"
+  },
+  {
+    "path": "storage.mysql.tls.private_key_path",
+    "secret": false,
+    "env": "AUTHELIA_STORAGE_MYSQL_TLS_PRIVATE_KEY_PATH"
   },
   {
     "path": "storage.mysql.tls.server_name",
@@ -1170,6 +1210,11 @@
     "env": "AUTHELIA_STORAGE_POSTGRES_TLS_CERTIFICATE_CHAIN_FILE"
   },
   {
+    "path": "storage.postgres.tls.certificate_chain_path",
+    "secret": false,
+    "env": "AUTHELIA_STORAGE_POSTGRES_TLS_CERTIFICATE_CHAIN_PATH"
+  },
+  {
     "path": "storage.postgres.tls.maximum_version",
     "secret": false,
     "env": "AUTHELIA_STORAGE_POSTGRES_TLS_MAXIMUM_VERSION"
@@ -1183,6 +1228,11 @@
     "path": "storage.postgres.tls.private_key",
     "secret": true,
     "env": "AUTHELIA_STORAGE_POSTGRES_TLS_PRIVATE_KEY_FILE"
+  },
+  {
+    "path": "storage.postgres.tls.private_key_path",
+    "secret": false,
+    "env": "AUTHELIA_STORAGE_POSTGRES_TLS_PRIVATE_KEY_PATH"
   },
   {
     "path": "storage.postgres.tls.server_name",

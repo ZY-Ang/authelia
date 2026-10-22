@@ -18,6 +18,9 @@ type TLS struct {
 
 	PrivateKey       CryptographicPrivateKey `koanf:"private_key" yaml:"private_key,omitempty" toml:"private_key,omitempty" json:"private_key,omitempty" jsonschema:"title=Private Key" jsonschema_description:"The private key."`
 	CertificateChain X509CertificateChain    `koanf:"certificate_chain" yaml:"certificate_chain,omitempty" toml:"certificate_chain,omitempty" json:"certificate_chain,omitempty" jsonschema:"title=Certificate Chain" jsonschema_description:"The certificate chain."`
+
+	PrivateKeyPath       string `koanf:"private_key_path" yaml:"private_key_path,omitempty" toml:"private_key_path,omitempty" json:"private_key_path,omitempty" jsonschema:"title=Private Key Path" jsonschema_description:"The path to the private key, read for each TLS connection. Cannot be used with private_key."`
+	CertificateChainPath string `koanf:"certificate_chain_path" yaml:"certificate_chain_path,omitempty" toml:"certificate_chain_path,omitempty" json:"certificate_chain_path,omitempty" jsonschema:"title=Certificate Chain Path" jsonschema_description:"The path to the certificate chain, read for each TLS connection. Cannot be used with certificate_chain."`
 }
 
 // ServerTimeouts represents server timeout configurations.
