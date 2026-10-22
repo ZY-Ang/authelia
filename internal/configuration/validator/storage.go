@@ -7,7 +7,6 @@ package validator
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/authelia/authelia/v4/internal/configuration/schema"
 	"github.com/authelia/authelia/v4/internal/utils"
@@ -113,9 +112,6 @@ func validatePostgreSQLConfiguration(config *schema.StoragePostgreSQL, validator
 		config.Schema = schema.DefaultPostgreSQLStorageConfiguration.Schema
 	}
 
-	validatePostgreSQLConfigurationConnectionDuration(&config.MaximumConnectionLifetime, schema.DefaultPostgreSQLStorageConfiguration.MaximumConnectionLifetime, "maximum_connection_lifetime", validator)
-	validatePostgreSQLConfigurationConnectionDuration(&config.MaximumConnectionIdleTime, schema.DefaultPostgreSQLStorageConfiguration.MaximumConnectionIdleTime, "maximum_connection_idle_time", validator)
-
 	switch {
 	case config.TLS != nil && config.SSL != nil: //nolint:staticcheck
 		validator.Push(errors.New(errFmtStoragePostgreSQLInvalidSSLAndTLSConfig))
@@ -144,15 +140,6 @@ func validatePostgreSQLConfiguration(config *schema.StoragePostgreSQL, validator
 	}
 
 	validatePostgreSQLConfigurationServers(config, validator)
-}
-
-func validatePostgreSQLConfigurationConnectionDuration(value *time.Duration, defaultValue time.Duration, option string, validator *schema.StructValidator) {
-	switch {
-	case *value < 0:
-		validator.Push(fmt.Errorf(errFmtStoragePostgreSQLOptionNegative, option, *value))
-	case *value == 0:
-		*value = defaultValue
-	}
 }
 
 func validatePostgreSQLConfigurationServers(config *schema.StoragePostgreSQL, validator *schema.StructValidator) {

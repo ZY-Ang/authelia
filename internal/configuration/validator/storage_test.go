@@ -7,7 +7,6 @@ package validator
 import (
 	"crypto/tls"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -678,59 +677,4 @@ func (suite *StorageSuite) TestShouldRaiseErrorOnShortEncryptionKey() {
 
 func TestShouldRunStorageSuite(t *testing.T) {
 	suite.Run(t, new(StorageSuite))
-}
-
-func (suite *StorageSuite) TestShouldSetPostgreSQLConnectionDurationDefaults() {
-	suite.config.PostgreSQL = &schema.StoragePostgreSQL{
-		StorageSQL: schema.StorageSQL{
-			Address:  &schema.AddressTCP{Address: MustParseAddress("tcp://postgre:4321")},
-			Username: "myuser",
-			Password: "pass",
-			Database: "database",
-		},
-	}
-
-	ValidateStorage(suite.config, suite.val)
-
-	suite.Len(suite.val.Errors(), 0)
-	suite.Equal(30*time.Minute, suite.config.PostgreSQL.MaximumConnectionLifetime)
-	suite.Equal(10*time.Minute, suite.config.PostgreSQL.MaximumConnectionIdleTime)
-}
-
-func (suite *StorageSuite) TestShouldKeepConfiguredPostgreSQLConnectionDurations() {
-	suite.config.PostgreSQL = &schema.StoragePostgreSQL{
-		StorageSQL: schema.StorageSQL{
-			Address:  &schema.AddressTCP{Address: MustParseAddress("tcp://postgre:4321")},
-			Username: "myuser",
-			Password: "pass",
-			Database: "database",
-		},
-		MaximumConnectionLifetime: time.Hour,
-		MaximumConnectionIdleTime: time.Minute,
-	}
-
-	ValidateStorage(suite.config, suite.val)
-
-	suite.Len(suite.val.Errors(), 0)
-	suite.Equal(time.Hour, suite.config.PostgreSQL.MaximumConnectionLifetime)
-	suite.Equal(time.Minute, suite.config.PostgreSQL.MaximumConnectionIdleTime)
-}
-
-func (suite *StorageSuite) TestShouldRaiseErrorOnNegativePostgreSQLConnectionDurations() {
-	suite.config.PostgreSQL = &schema.StoragePostgreSQL{
-		StorageSQL: schema.StorageSQL{
-			Address:  &schema.AddressTCP{Address: MustParseAddress("tcp://postgre:4321")},
-			Username: "myuser",
-			Password: "pass",
-			Database: "database",
-		},
-		MaximumConnectionLifetime: -time.Minute,
-		MaximumConnectionIdleTime: -time.Second,
-	}
-
-	ValidateStorage(suite.config, suite.val)
-
-	suite.Require().Len(suite.val.Errors(), 2)
-	suite.EqualError(suite.val.Errors()[0], "storage: postgres: option 'maximum_connection_lifetime' must be greater than or equal to 0 but it's configured as '-1m0s'")
-	suite.EqualError(suite.val.Errors()[1], "storage: postgres: option 'maximum_connection_idle_time' must be greater than or equal to 0 but it's configured as '-1s'")
 }

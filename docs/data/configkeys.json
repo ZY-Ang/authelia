@@ -1190,16 +1190,6 @@
     "env": "AUTHELIA_STORAGE_POSTGRES_DATABASE"
   },
   {
-    "path": "storage.postgres.maximum_connection_idle_time",
-    "secret": false,
-    "env": "AUTHELIA_STORAGE_POSTGRES_MAXIMUM_CONNECTION_IDLE_TIME"
-  },
-  {
-    "path": "storage.postgres.maximum_connection_lifetime",
-    "secret": false,
-    "env": "AUTHELIA_STORAGE_POSTGRES_MAXIMUM_CONNECTION_LIFETIME"
-  },
-  {
     "path": "storage.postgres.password",
     "secret": true,
     "env": "AUTHELIA_STORAGE_POSTGRES_PASSWORD_FILE"

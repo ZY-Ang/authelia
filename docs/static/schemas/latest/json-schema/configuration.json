@@ -4240,34 +4240,6 @@
           "description": "The default schema name to use.",
           "default": "public"
         },
-        "maximum_connection_lifetime": {
-          "oneOf": [
-            {
-              "type": "string",
-              "pattern": "^\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?))(\\s*(\\s+and\\s+)?\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?)))*$"
-            },
-            {
-              "type": "integer",
-              "description": "The duration in seconds"
-            }
-          ],
-          "title": "Maximum Connection Lifetime",
-          "description": "The maximum duration a pooled connection is reused when a TLS client certificate file pair is configured."
-        },
-        "maximum_connection_idle_time": {
-          "oneOf": [
-            {
-              "type": "string",
-              "pattern": "^\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?))(\\s*(\\s+and\\s+)?\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?)))*$"
-            },
-            {
-              "type": "integer",
-              "description": "The duration in seconds"
-            }
-          ],
-          "title": "Maximum Connection Idle Time",
-          "description": "The maximum duration a pooled connection may be idle when a TLS client certificate file pair is configured."
-        },
         "servers": {
           "items": {
             "$ref": "#/$defs/StoragePostgreSQLServer"

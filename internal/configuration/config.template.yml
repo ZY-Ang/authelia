@@ -947,6 +947,7 @@ session:
     ## The connection timeout in the duration common syntax.
     # timeout: '5 seconds'
 
+
     ## The maximum number of retries on a failed command. Set it to 0 to disable retries.
     # max_retries: 3
 
@@ -1094,6 +1095,7 @@ session:
     ## The connection timeout in the duration common syntax.
     # timeout: '5 seconds'
 
+
     ## MySQL TLS settings. Configuring this requires TLS.
     # tls:
       ## The server subject name to check the servers certificate against during the validation process.
@@ -1181,14 +1183,6 @@ session:
     ## The connection timeout in the duration common syntax.
     # timeout: '5 seconds'
 
-    ## The maximum duration a pooled connection is reused before it is replaced, in the duration common syntax.
-    ## Only applies when the tls certificate_chain_path and private_key_path options are configured.
-    # maximum_connection_lifetime: '30 minutes'
-
-    ## The maximum duration a pooled connection may be idle before it is closed, in the duration common syntax.
-    ## Only applies when the tls certificate_chain_path and private_key_path options are configured.
-    # maximum_connection_idle_time: '10 minutes'
-
     ## PostgreSQL TLS settings. Configuring this requires TLS.
     # tls:
       ## The server subject name to check the servers certificate against during the validation process.
@@ -1259,6 +1253,7 @@ session:
 
     ## The connection timeout in the duration common syntax.
     # timeout: '5 seconds'
+
 
     ## The username used for SMTP authentication.
     # username: 'test'

@@ -476,8 +476,6 @@ var Keys = []string{
 	"storage.mysql.username",
 	"storage.postgres.address",
 	"storage.postgres.database",
-	"storage.postgres.maximum_connection_idle_time",
-	"storage.postgres.maximum_connection_lifetime",
 	"storage.postgres.password",
 	"storage.postgres.schema",
 	"storage.postgres.servers",
