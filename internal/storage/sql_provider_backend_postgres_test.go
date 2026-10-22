@@ -12,6 +12,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/pem"
 	"io"
 	"math/big"
@@ -916,4 +918,79 @@ func TestPostgreSQLTLSNeverFallsBackToPlaintext(t *testing.T) {
 
 	// Only the SSLRequest arrives: a fallback to plaintext would also send a StartupMessage.
 	assert.Len(t, <-received, 8)
+}
+
+type testPoolConnector struct{}
+
+func (testPoolConnector) Connect(context.Context) (driver.Conn, error) { return testPoolConn{}, nil }
+func (testPoolConnector) Driver() driver.Driver                        { return nil }
+
+type testPoolConn struct{}
+
+func (testPoolConn) Prepare(string) (driver.Stmt, error) { return nil, driver.ErrSkip }
+func (testPoolConn) Close() error                        { return nil }
+func (testPoolConn) Begin() (driver.Tx, error)           { return nil, driver.ErrSkip }
+
+func TestSetPostgreSQLPoolLimits(t *testing.T) {
+	testCases := []struct {
+		name         string
+		have         *schema.StoragePostgreSQL
+		lifetimeShut bool
+		idleShut     bool
+	}{
+		{
+			"ShouldApplyLifetime",
+			&schema.StoragePostgreSQL{
+				StorageSQL:                schema.StorageSQL{TLS: &schema.TLS{CertificateChainFile: "/c.pem"}},
+				MaximumConnectionLifetime: 20 * time.Millisecond,
+				MaximumConnectionIdleTime: time.Hour,
+			},
+			true, false,
+		},
+		{
+			"ShouldApplyIdleTime",
+			&schema.StoragePostgreSQL{
+				StorageSQL:                schema.StorageSQL{TLS: &schema.TLS{CertificateChainFile: "/c.pem"}},
+				MaximumConnectionLifetime: time.Hour,
+				MaximumConnectionIdleTime: 20 * time.Millisecond,
+			},
+			false, true,
+		},
+		{
+			"ShouldNotApplyWithoutFilePair",
+			&schema.StoragePostgreSQL{
+				StorageSQL:                schema.StorageSQL{TLS: &schema.TLS{}},
+				MaximumConnectionLifetime: 20 * time.Millisecond,
+				MaximumConnectionIdleTime: 20 * time.Millisecond,
+			},
+			false, false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			db := sql.OpenDB(testPoolConnector{})
+
+			defer db.Close()
+
+			setPostgreSQLPoolLimits(db, tc.have)
+
+			conn, err := db.Conn(context.Background())
+			require.NoError(t, err)
+			require.NoError(t, conn.Close())
+
+			time.Sleep(1500 * time.Millisecond)
+
+			conn, err = db.Conn(context.Background())
+			require.NoError(t, err)
+			require.NoError(t, conn.Close())
+
+			stats := db.Stats()
+
+			assert.Equal(t, tc.lifetimeShut, stats.MaxLifetimeClosed > 0)
+			assert.Equal(t, tc.idleShut, stats.MaxIdleTimeClosed > 0)
+		})
+	}
 }

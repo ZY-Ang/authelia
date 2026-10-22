@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -40,11 +39,7 @@ func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPo
 
 	db = stdlib.OpenDB(*dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool), stdlib.OptionBeforeConnect(newPostgreSQLBeforeConnect(config.Storage.PostgreSQL, config.CertificatesDirectory, caCertPool)))
 
-	if config.Storage.PostgreSQL.TLS != nil && config.Storage.PostgreSQL.TLS.CertificateChainFile != "" {
-		// Bound the age of pooled connections so each is replaced before the certificate it was opened with expires.
-		db.SetConnMaxLifetime(postgreSQLConnMaxLifetime)
-		db.SetConnMaxIdleTime(postgreSQLConnMaxIdleTime)
-	}
+	setPostgreSQLPoolLimits(db, config.Storage.PostgreSQL)
 
 	if p, err = newSQLProvider(config, providerPostgres, "pgx", sqlx.NewDb(db, "pgx")); err != nil {
 		_ = db.Close()
@@ -440,14 +435,6 @@ func newPostgreSQLVerifyPeerCertificateFunc(config *tls.Config) func(certificate
 	}
 }
 
-// postgreSQLConnMaxLifetime and postgreSQLConnMaxIdleTime bound how long a pooled connection may keep using the
-// certificate it was opened with; database/sql closes idle connections past them, and the next connection is opened
-// with the files as they are then.
-const (
-	postgreSQLConnMaxLifetime = 30 * time.Minute
-	postgreSQLConnMaxIdleTime = 10 * time.Minute
-)
-
 // newPostgreSQLBeforeConnect returns a hook that rebuilds the TLS configuration for every new connection, so a
 // certificate pair or a certificates directory replaced on disk is used without a restart.
 func newPostgreSQLBeforeConnect(config *schema.StoragePostgreSQL, certificatesDirectory string, globalCACertPool *x509.CertPool) func(context.Context, *pgx.ConnConfig) error {
@@ -513,4 +500,15 @@ func postgreSQLTLSConfig(config *schema.TLS, previous *tls.Config, rootCAs *x509
 	}
 
 	return tlsConfig
+}
+
+// setPostgreSQLPoolLimits bounds the age of pooled connections when a file-based client pair is configured so each
+// connection is replaced before the certificate it was opened with expires.
+func setPostgreSQLPoolLimits(db *sql.DB, config *schema.StoragePostgreSQL) {
+	if config.TLS == nil || config.TLS.CertificateChainFile == "" {
+		return
+	}
+
+	db.SetConnMaxLifetime(config.MaximumConnectionLifetime)
+	db.SetConnMaxIdleTime(config.MaximumConnectionIdleTime)
 }

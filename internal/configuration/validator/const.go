@@ -170,6 +170,7 @@ const (
 
 	errFmtStorageTLSConfigInvalid                 = "storage: %s: tls: %w"
 	errFmtStoragePostgreSQLInvalidSSLMode         = "storage: postgres: ssl: option 'mode' must be one of %s but it's configured as '%s'"
+	errFmtStoragePostgreSQLOptionNegative         = "storage: postgres: option '%s' must be greater than or equal to 0 but it's configured as '%s'"
 	errFmtStoragePostgreSQLInvalidSSLAndTLSConfig = "storage: postgres: can't define both 'tls' and 'ssl' configuration options"
 	warnFmtStoragePostgreSQLInvalidSSLDeprecated  = "storage: postgres: ssl: the ssl configuration options are deprecated and we recommend the tls options instead"
 )

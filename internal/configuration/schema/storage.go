@@ -45,6 +45,9 @@ type StoragePostgreSQL struct {
 
 	Schema string `koanf:"schema" yaml:"schema,omitempty" toml:"schema,omitempty" json:"schema,omitempty" jsonschema:"default=public,title=Schema" jsonschema_description:"The default schema name to use."`
 
+	MaximumConnectionLifetime time.Duration `koanf:"maximum_connection_lifetime" yaml:"maximum_connection_lifetime,omitempty" toml:"maximum_connection_lifetime,omitempty" json:"maximum_connection_lifetime,omitempty" jsonschema:"default=30 minutes,title=Maximum Connection Lifetime" jsonschema_description:"The maximum duration a pooled connection is reused when a TLS client certificate file pair is configured."`
+	MaximumConnectionIdleTime time.Duration `koanf:"maximum_connection_idle_time" yaml:"maximum_connection_idle_time,omitempty" toml:"maximum_connection_idle_time,omitempty" json:"maximum_connection_idle_time,omitempty" jsonschema:"default=10 minutes,title=Maximum Connection Idle Time" jsonschema_description:"The maximum duration a pooled connection may be idle when a TLS client certificate file pair is configured."`
+
 	Servers []StoragePostgreSQLServer `koanf:"servers" yaml:"servers,omitempty" toml:"servers,omitempty" json:"servers,omitempty" jsonschema:"title=Servers" jsonschema_description:"The fallback PostgreSQL severs to connect to in addition to the one defined by the address."`
 
 	// Deprecated: Use the TLS configuration instead.
@@ -96,7 +99,9 @@ var DefaultPostgreSQLStorageConfiguration = StoragePostgreSQL{
 			},
 		},
 	},
-	Schema: "public",
+	Schema:                    "public",
+	MaximumConnectionLifetime: 30 * time.Minute,
+	MaximumConnectionIdleTime: 10 * time.Minute,
 	SSL: &StoragePostgreSQLSSL{
 		Mode: "disable",
 	},

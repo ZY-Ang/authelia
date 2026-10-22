@@ -188,7 +188,31 @@
             "MOVE",
             "PROPFIND",
             "PROPPATCH",
-            "UNLOCK"
+            "UNLOCK",
+            "ACL",
+            "BASELINE-CONTROL",
+            "BIND",
+            "CHECKIN",
+            "CHECKOUT",
+            "LABEL",
+            "LINK",
+            "MERGE",
+            "MKACTIVITY",
+            "MKCALENDAR",
+            "MKREDIRECTREF",
+            "MKWORKSPACE",
+            "ORDERPATCH",
+            "PRI",
+            "QUERY",
+            "REBIND",
+            "REPORT",
+            "SEARCH",
+            "UNBIND",
+            "UNCHECKOUT",
+            "UNLINK",
+            "UPDATE",
+            "UPDATEREDIRECTREF",
+            "VERSION-CONTROL"
           ]
         },
         {
@@ -210,7 +234,31 @@
               "MOVE",
               "PROPFIND",
               "PROPPATCH",
-              "UNLOCK"
+              "UNLOCK",
+              "ACL",
+              "BASELINE-CONTROL",
+              "BIND",
+              "CHECKIN",
+              "CHECKOUT",
+              "LABEL",
+              "LINK",
+              "MERGE",
+              "MKACTIVITY",
+              "MKCALENDAR",
+              "MKREDIRECTREF",
+              "MKWORKSPACE",
+              "ORDERPATCH",
+              "PRI",
+              "QUERY",
+              "REBIND",
+              "REPORT",
+              "SEARCH",
+              "UNBIND",
+              "UNCHECKOUT",
+              "UNLINK",
+              "UPDATE",
+              "UPDATEREDIRECTREF",
+              "VERSION-CONTROL"
             ]
           },
           "type": "array",
@@ -1218,6 +1266,12 @@
           "title": "The default redirection URL",
           "description": "Deprecated: Use the session cookies option with the same name instead.",
           "deprecated": true
+        },
+        "$schema": {
+          "type": "string",
+          "format": "uri",
+          "title": "JSON Schema",
+          "description": "The JSON Schema which applies to this file."
         }
       },
       "additionalProperties": false,
@@ -3650,6 +3704,16 @@
           "title": "Implementation",
           "description": "The specific Authorization implementation to use for this endpoint."
         },
+        "headers": {
+          "patternProperties": {
+            ".*": {
+              "$ref": "#/$defs/ServerEndpointsAuthzHeader"
+            }
+          },
+          "type": "object",
+          "title": "Headers",
+          "description": "The specific Authorization headers to use for this endpoint."
+        },
         "authn_strategies": {
           "items": {
             "$ref": "#/$defs/ServerEndpointsAuthzAuthnStrategy"
@@ -3710,6 +3774,21 @@
       "additionalProperties": false,
       "type": "object",
       "description": "ServerEndpointsAuthzAuthnStrategy is the Authz endpoints configuration for the HTTP server."
+    },
+    "ServerEndpointsAuthzHeader": {
+      "properties": {
+        "user_attribute": {
+          "type": "string",
+          "title": "User Attribute",
+          "description": "The user attribute to use for the header."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "user_attribute"
+      ],
+      "description": "ServerEndpointsAuthzHeader is the Authz endpoint response header configuration for the HTTP server."
     },
     "ServerHeaders": {
       "properties": {
@@ -4240,6 +4319,34 @@
           "description": "The default schema name to use.",
           "default": "public"
         },
+        "maximum_connection_lifetime": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?))(\\s*(\\s+and\\s+)?\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?)))*$"
+            },
+            {
+              "type": "integer",
+              "description": "The duration in seconds"
+            }
+          ],
+          "title": "Maximum Connection Lifetime",
+          "description": "The maximum duration a pooled connection is reused when a TLS client certificate file pair is configured."
+        },
+        "maximum_connection_idle_time": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?))(\\s*(\\s+and\\s+)?\\d+\\s*(y|M|w|d|h|m|s|ms|((year|month|week|day|hour|minute|second|millisecond)s?)))*$"
+            },
+            {
+              "type": "integer",
+              "description": "The duration in seconds"
+            }
+          ],
+          "title": "Maximum Connection Idle Time",
+          "description": "The maximum duration a pooled connection may be idle when a TLS client certificate file pair is configured."
+        },
         "servers": {
           "items": {
             "$ref": "#/$defs/StoragePostgreSQLServer"
@@ -4347,6 +4454,16 @@
           "$ref": "#/$defs/X509CertificateChain",
           "title": "Certificate Chain",
           "description": "The certificate chain."
+        },
+        "private_key_file": {
+          "type": "string",
+          "title": "Private Key File",
+          "description": "The path to the private key, read for each TLS connection. Cannot be used with private_key."
+        },
+        "certificate_chain_file": {
+          "type": "string",
+          "title": "Certificate Chain File",
+          "description": "The path to the certificate chain, read for each TLS connection. Cannot be used with certificate_chain."
         }
       },
       "additionalProperties": false,
