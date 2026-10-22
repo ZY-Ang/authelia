@@ -208,7 +208,8 @@ func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPo
 func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool) *pgx.ConnConfig {
 	dsnConfig, _ := pgx.ParseConfig("")
 
-	// Never fall back to plaintext, the default sslmode of pgx adds such a fallback.
+	// Strip any pgx-generated fallback so the connection cannot downgrade to plaintext or non-verifying TLS if the
+	// handshake fails.
 	dsnConfig.Fallbacks = nil
 
 	dsnConfig.Host, dsnConfig.Port = dsnPostgreSQLHostPort(config.Address)
