@@ -502,7 +502,7 @@ func postgreSQLTLSConfig(config *schema.TLS, previous *tls.Config, rootCAs *x509
 // setPostgreSQLPoolLimits bounds the age of pooled connections when a file-based client pair is configured so each
 // connection is replaced before the certificate it was opened with expires.
 func setPostgreSQLPoolLimits(db *sql.DB, config *schema.StoragePostgreSQL) {
-	if config.TLS == nil || config.TLS.CertificateChainFile == "" {
+	if config.TLS == nil || config.TLS.CertificateChainPath == "" {
 		return
 	}
 

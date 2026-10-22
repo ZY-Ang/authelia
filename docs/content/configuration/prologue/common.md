@@ -316,8 +316,8 @@ tls:
     ...
     -----END PRIVATE KEY-----
   # Or, instead of the two values above, the paths of the same pair, read for each TLS connection:
-  certificate_chain_file: '/path/to/certificate_chain.pem'
-  private_key_file: '/path/to/private_key.pem'
+  certificate_chain_path: '/path/to/certificate_chain.pem'
+  private_key_path: '/path/to/private_key.pem'
 ```
 
 #### server_name
@@ -374,22 +374,22 @@ material of the private key must match the private key of the first certificate 
 The value must be one private key encoded in the DER base64 ([RFC4648]) encoded PEM format and must be encoded per the
 [PKCS#8], [PKCS#1], or [SECG1] specifications.
 
-#### certificate_chain_file
+#### certificate_chain_path
 
 {{< confkey type="string" required="no" >}}
 
 The path to a file containing the certificate chain described by [certificate_chain](#certificate_chain). It cannot be
-used with [certificate_chain](#certificate_chain), and must be used with [private_key_file](#private_key_file).
+used with [certificate_chain](#certificate_chain), and must be used with [private_key_path](#private_key_path).
 
 The file is read for each TLS handshake, so a certificate pair replaced on disk is used by the next connection without
 a restart.
 
-#### private_key_file
+#### private_key_path
 
 {{< confkey type="string" required="no" secret="yes" >}}
 
 The path to a file containing the private key described by [private_key](#private_key). It cannot be used with
-[private_key](#private_key), and must be used with [certificate_chain_file](#certificate_chain_file).
+[private_key](#private_key), and must be used with [certificate_chain_path](#certificate_chain_path).
 
 [PKCS#8]: https://datatracker.ietf.org/doc/html/rfc5208
 [PKCS#1]: https://datatracker.ietf.org/doc/html/rfc8017

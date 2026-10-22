@@ -769,7 +769,7 @@ func TestPostgreSQLBeforeConnectReloadsCertificate(t *testing.T) {
 	certificatePath, keyPath := writeTestPair(t, directory, "client", certificateOnePEM, keyOnePEM)
 
 	config := &schema.StoragePostgreSQL{
-		TLS: &schema.TLS{CertificateChainFile: certificatePath, PrivateKeyFile: keyPath, SkipVerify: true},
+		TLS: &schema.TLS{CertificateChainPath: certificatePath, PrivateKeyPath: keyPath, SkipVerify: true},
 	}
 
 	hook := newPostgreSQLBeforeConnect(config, directory, x509.NewCertPool())
@@ -824,7 +824,7 @@ func TestPostgreSQLBeforeConnectPreservesServerName(t *testing.T) {
 	certificatePath, keyPath := writeTestPair(t, directory, "client", certificatePEM, keyPEM)
 
 	config := &schema.StoragePostgreSQL{
-		TLS: &schema.TLS{CertificateChainFile: certificatePath, PrivateKeyFile: keyPath},
+		TLS: &schema.TLS{CertificateChainPath: certificatePath, PrivateKeyPath: keyPath},
 	}
 
 	hook := newPostgreSQLBeforeConnect(config, "", x509.NewCertPool())
@@ -941,7 +941,7 @@ func TestSetPostgreSQLPoolLimits(t *testing.T) {
 		{
 			"ShouldApplyLifetime",
 			&schema.StoragePostgreSQL{
-				StorageSQL:                schema.StorageSQL{TLS: &schema.TLS{CertificateChainFile: "/c.pem"}},
+				StorageSQL:                schema.StorageSQL{TLS: &schema.TLS{CertificateChainPath: "/c.pem"}},
 				MaximumConnectionLifetime: 20 * time.Millisecond,
 				MaximumConnectionIdleTime: time.Hour,
 			},
@@ -950,7 +950,7 @@ func TestSetPostgreSQLPoolLimits(t *testing.T) {
 		{
 			"ShouldApplyIdleTime",
 			&schema.StoragePostgreSQL{
-				StorageSQL:                schema.StorageSQL{TLS: &schema.TLS{CertificateChainFile: "/c.pem"}},
+				StorageSQL:                schema.StorageSQL{TLS: &schema.TLS{CertificateChainPath: "/c.pem"}},
 				MaximumConnectionLifetime: time.Hour,
 				MaximumConnectionIdleTime: 20 * time.Millisecond,
 			},

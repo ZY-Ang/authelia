@@ -329,12 +329,12 @@ func NewTLSConfig(config *schema.TLS, rootCAs *x509.CertPool) (tlsConfig *tls.Co
 	}
 
 	switch {
-	case config.CertificateChainFile != "" && config.PrivateKeyFile != "":
+	case config.CertificateChainPath != "" && config.PrivateKeyPath != "":
 		// Read the pair for each handshake so a pair replaced on disk is used by the next connection.
 		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			certificate, err := tls.LoadX509KeyPair(config.CertificateChainFile, config.PrivateKeyFile)
+			certificate, err := tls.LoadX509KeyPair(config.CertificateChainPath, config.PrivateKeyPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to load the certificate pair '%s' and '%s': %w", config.CertificateChainFile, config.PrivateKeyFile, err)
+				return nil, fmt.Errorf("failed to load the certificate pair '%s' and '%s': %w", config.CertificateChainPath, config.PrivateKeyPath, err)
 			}
 
 			return &certificate, nil

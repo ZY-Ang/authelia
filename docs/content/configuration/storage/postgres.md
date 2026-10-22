@@ -171,7 +171,7 @@ The SQL connection timeout.
 {{< confkey type="string,integer" syntax="duration" default="30 minutes" required="no" >}}
 
 The maximum duration a pooled connection is reused before it is replaced. This only applies when the TLS
-`certificate_chain_file` and `private_key_file` options are configured, so each connection is renewed before the client
+`certificate_chain_path` and `private_key_path` options are configured, so each connection is renewed before the client
 certificate it was opened with expires. It must be greater than or equal to 0.
 
 ### maximum_connection_idle_time
@@ -179,7 +179,7 @@ certificate it was opened with expires. It must be greater than or equal to 0.
 {{< confkey type="string,integer" syntax="duration" default="10 minutes" required="no" >}}
 
 The maximum duration a pooled connection may be idle before it is closed. This only applies when the TLS
-`certificate_chain_file` and `private_key_file` options are configured. It must be greater than or equal to 0.
+`certificate_chain_path` and `private_key_path` options are configured. It must be greater than or equal to 0.
 
 ### tls
 
@@ -194,7 +194,7 @@ this.
 
 The TLS configuration is built again for every new connection: the server certificate is verified against a pool
 rebuilt from the [certificates_directory](../miscellaneous/introduction.md#certificates_directory), and a client pair
-given with `certificate_chain_file` and `private_key_file` is read again, so certificates replaced on disk are used
+given with `certificate_chain_path` and `private_key_path` is read again, so certificates replaced on disk are used
 without a restart. When a file-based pair is configured, pooled connections are also replaced after the
 [maximum_connection_lifetime](#maximum_connection_lifetime) and idle ones after the
 [maximum_connection_idle_time](#maximum_connection_idle_time), so they are renewed before the certificate they were

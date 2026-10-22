@@ -46,21 +46,21 @@ func ValidateTLSConfig(config *schema.TLS, configDefault *schema.TLS) (err error
 		return errors.New("option 'certificate_chain' is invalid: provided certificate chain does not contain the public key for the private key provided")
 	}
 
-	if config.CertificateChainFile != "" && config.CertificateChain.HasCertificates() {
-		return errors.New("option 'certificate_chain_file' is invalid: it cannot be used in addition to 'certificate_chain'")
+	if config.CertificateChainPath != "" && config.CertificateChain.HasCertificates() {
+		return errors.New("option 'certificate_chain_path' is invalid: it cannot be used in addition to 'certificate_chain'")
 	}
 
-	if config.PrivateKeyFile != "" && config.PrivateKey != nil {
-		return errors.New("option 'private_key_file' is invalid: it cannot be used in addition to 'private_key'")
+	if config.PrivateKeyPath != "" && config.PrivateKey != nil {
+		return errors.New("option 'private_key_path' is invalid: it cannot be used in addition to 'private_key'")
 	}
 
-	if (config.CertificateChainFile != "") != (config.PrivateKeyFile != "") {
-		return errors.New("option 'certificate_chain_file' is invalid: it must be used with 'private_key_file'")
+	if (config.CertificateChainPath != "") != (config.PrivateKeyPath != "") {
+		return errors.New("option 'certificate_chain_path' is invalid: it must be used with 'private_key_path'")
 	}
 
-	if config.CertificateChainFile != "" {
-		if _, err = tls.LoadX509KeyPair(config.CertificateChainFile, config.PrivateKeyFile); err != nil {
-			return fmt.Errorf("option 'certificate_chain_file' is invalid: the certificate pair could not be loaded: %w", err)
+	if config.CertificateChainPath != "" {
+		if _, err = tls.LoadX509KeyPair(config.CertificateChainPath, config.PrivateKeyPath); err != nil {
+			return fmt.Errorf("option 'certificate_chain_path' is invalid: the certificate pair could not be loaded: %w", err)
 		}
 	}
 
