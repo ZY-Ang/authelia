@@ -643,7 +643,7 @@ func TestNewPostgreSQLProviderShouldRebindAllQueries(t *testing.T) {
 	}
 }
 
-func TestNewPostgreSQLBeforeConnectShouldRebuildTLSConfig(t *testing.T) {
+func TestNewPostgreSQLBeforeConnectShouldReloadTLSConfig(t *testing.T) {
 	dir, crypto := t.TempDir(), filepath.Join("..", "configuration", "test_resources", "crypto")
 
 	copyFile := func(src, dst string) {
@@ -658,17 +658,33 @@ func TestNewPostgreSQLBeforeConnectShouldRebuildTLSConfig(t *testing.T) {
 	copyFile("rsa.2048.crt", certPath)
 	copyFile("rsa.2048.pem", keyPath)
 
-	config := &schema.StoragePostgreSQL{StorageSQL: schema.StorageSQL{TLS: &schema.TLS{CertificateChainPath: certPath, PrivateKeyPath: keyPath}}}
+	address, err := schema.NewAddress("tcp://localhost:5432")
+	require.NoError(t, err)
+
+	config := &schema.StoragePostgreSQL{StorageSQL: schema.StorageSQL{
+		Address: &schema.AddressTCP{Address: *address},
+		TLS:     &schema.TLS{CertificateChainPath: certPath, PrivateKeyPath: keyPath},
+	}}
+
+	connConfig := dsnPostgreSQL(config, x509.NewCertPool())
+	connConfig.TLSConfig.ServerName = "postgres.example.com"
+
+	assert.Empty(t, connConfig.Fallbacks)
+
 	hook := newPostgreSQLBeforeConnect(config, caDir, x509.NewCertPool())
 
 	connect := func() (*tls.Config, *tls.Certificate) {
-		connConfig := &pgx.ConnConfig{}
-		require.NoError(t, hook(context.Background(), connConfig))
+		next := *connConfig
 
-		certificate, err := connConfig.TLSConfig.GetClientCertificate(nil)
+		require.NoError(t, hook(context.Background(), &next))
+
+		certificate, err := next.TLSConfig.GetClientCertificate(nil)
 		require.NoError(t, err)
 
-		return connConfig.TLSConfig, certificate
+		assert.Equal(t, "postgres.example.com", next.TLSConfig.ServerName)
+		assert.Empty(t, next.Fallbacks)
+
+		return next.TLSConfig, certificate
 	}
 
 	first, firstCert := connect()
