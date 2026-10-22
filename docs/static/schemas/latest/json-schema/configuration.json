@@ -188,31 +188,7 @@
             "MOVE",
             "PROPFIND",
             "PROPPATCH",
-            "UNLOCK",
-            "ACL",
-            "BASELINE-CONTROL",
-            "BIND",
-            "CHECKIN",
-            "CHECKOUT",
-            "LABEL",
-            "LINK",
-            "MERGE",
-            "MKACTIVITY",
-            "MKCALENDAR",
-            "MKREDIRECTREF",
-            "MKWORKSPACE",
-            "ORDERPATCH",
-            "PRI",
-            "QUERY",
-            "REBIND",
-            "REPORT",
-            "SEARCH",
-            "UNBIND",
-            "UNCHECKOUT",
-            "UNLINK",
-            "UPDATE",
-            "UPDATEREDIRECTREF",
-            "VERSION-CONTROL"
+            "UNLOCK"
           ]
         },
         {
@@ -234,31 +210,7 @@
               "MOVE",
               "PROPFIND",
               "PROPPATCH",
-              "UNLOCK",
-              "ACL",
-              "BASELINE-CONTROL",
-              "BIND",
-              "CHECKIN",
-              "CHECKOUT",
-              "LABEL",
-              "LINK",
-              "MERGE",
-              "MKACTIVITY",
-              "MKCALENDAR",
-              "MKREDIRECTREF",
-              "MKWORKSPACE",
-              "ORDERPATCH",
-              "PRI",
-              "QUERY",
-              "REBIND",
-              "REPORT",
-              "SEARCH",
-              "UNBIND",
-              "UNCHECKOUT",
-              "UNLINK",
-              "UPDATE",
-              "UPDATEREDIRECTREF",
-              "VERSION-CONTROL"
+              "UNLOCK"
             ]
           },
           "type": "array",
@@ -1266,12 +1218,6 @@
           "title": "The default redirection URL",
           "description": "Deprecated: Use the session cookies option with the same name instead.",
           "deprecated": true
-        },
-        "$schema": {
-          "type": "string",
-          "format": "uri",
-          "title": "JSON Schema",
-          "description": "The JSON Schema which applies to this file."
         }
       },
       "additionalProperties": false,
@@ -3704,16 +3650,6 @@
           "title": "Implementation",
           "description": "The specific Authorization implementation to use for this endpoint."
         },
-        "headers": {
-          "patternProperties": {
-            ".*": {
-              "$ref": "#/$defs/ServerEndpointsAuthzHeader"
-            }
-          },
-          "type": "object",
-          "title": "Headers",
-          "description": "The specific Authorization headers to use for this endpoint."
-        },
         "authn_strategies": {
           "items": {
             "$ref": "#/$defs/ServerEndpointsAuthzAuthnStrategy"
@@ -3774,21 +3710,6 @@
       "additionalProperties": false,
       "type": "object",
       "description": "ServerEndpointsAuthzAuthnStrategy is the Authz endpoints configuration for the HTTP server."
-    },
-    "ServerEndpointsAuthzHeader": {
-      "properties": {
-        "user_attribute": {
-          "type": "string",
-          "title": "User Attribute",
-          "description": "The user attribute to use for the header."
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "user_attribute"
-      ],
-      "description": "ServerEndpointsAuthzHeader is the Authz endpoint response header configuration for the HTTP server."
     },
     "ServerHeaders": {
       "properties": {
