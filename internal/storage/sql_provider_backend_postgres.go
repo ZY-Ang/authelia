@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
@@ -32,12 +33,9 @@ type PostgreSQLProvider struct {
 
 // NewPostgreSQLProvider a PostgreSQL provider.
 func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provider *PostgreSQLProvider, err error) {
-	var (
-		p  SQLProvider
-		db *sql.DB
-	)
+	var p SQLProvider
 
-	db = stdlib.OpenDB(*dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool), stdlib.OptionBeforeConnect(newPostgreSQLBeforeConnect(config.Storage.PostgreSQL, config.CertificatesDirectory, caCertPool)))
+	db := stdlib.OpenDB(*dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool), stdlib.OptionBeforeConnect(newPostgreSQLBeforeConnect(config.Storage.PostgreSQL, config.CertificatesDirectory, caCertPool)))
 
 	setPostgreSQLPoolLimits(db, config.Storage.PostgreSQL)
 
@@ -452,9 +450,8 @@ func newPostgreSQLBeforeConnect(config *schema.StoragePostgreSQL, certificatesDi
 			connConfig.TLSConfig = postgreSQLTLSConfig(config.TLS, connConfig.TLSConfig, rootCAs)
 		}
 
-		if len(config.Servers) != 0 && len(connConfig.Fallbacks) != 0 {
-			fallbacks := make([]*pgconn.FallbackConfig, len(connConfig.Fallbacks))
-			copy(fallbacks, connConfig.Fallbacks)
+		if len(connConfig.Fallbacks) != 0 {
+			fallbacks := slices.Clone(connConfig.Fallbacks)
 
 			for i, server := range config.Servers {
 				if i >= len(fallbacks) || server.TLS == nil {
