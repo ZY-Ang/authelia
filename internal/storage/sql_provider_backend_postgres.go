@@ -8,13 +8,16 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -34,11 +37,7 @@ type PostgreSQLProvider struct {
 func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provider *PostgreSQLProvider, err error) {
 	var p SQLProvider
 
-	db := stdlib.OpenDB(*dsnPostgreSQL(config.Storage.PostgreSQL, caCertPool), stdlib.OptionBeforeConnect(newPostgreSQLBeforeConnect(config.Storage.PostgreSQL, config.CertificatesDirectory, caCertPool)))
-
-	if p, err = newSQLProvider(config, providerPostgres, "pgx", sqlx.NewDb(db, "pgx")); err != nil {
-		_ = db.Close()
-
+	if p, err = NewSQLProvider(config, providerPostgres, driverNamePostgreSQL, dsnPostgreSQL(config.Storage.PostgreSQL, config.CertificatesDirectory, caCertPool)); err != nil {
 		return nil, err
 	}
 
@@ -199,14 +198,8 @@ func NewPostgreSQLProvider(config *schema.Configuration, caCertPool *x509.CertPo
 	return provider, nil
 }
 
-// dsnPostgreSQL builds the PostgreSQL connection configuration for the process. The TLS configuration is rebuilt
-// from its files for every new connection by newPostgreSQLBeforeConnect.
-func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.CertPool) (dsnConfig *pgx.ConnConfig) {
-	dsnConfig, _ = pgx.ParseConfig("")
-
-	// pgx derives a plaintext fallback from the default sslmode 'prefer' for the host it parses. Authelia sets the
-	// host and TLS itself, and a failed TLS handshake must not end in a plaintext connection.
-	dsnConfig.Fallbacks = nil
+func dsnPostgreSQL(config *schema.StoragePostgreSQL, certificatesDirectory string, globalCACertPool *x509.CertPool) (dsn string) {
+	dsnConfig, _ := pgx.ParseConfig("")
 
 	dsnConfig.Host, dsnConfig.Port = dsnPostgreSQLHostPort(config.Address)
 	dsnConfig.Database = config.Database
@@ -223,7 +216,7 @@ func dsnPostgreSQL(config *schema.StoragePostgreSQL, globalCACertPool *x509.Cert
 		dsnPostgreSQLFallbacks(config, globalCACertPool, dsnConfig)
 	}
 
-	return dsnConfig
+	return registerPostgreSQLConnector(stdlib.GetConnector(*dsnConfig, stdlib.OptionBeforeConnect(newPostgreSQLBeforeConnect(config, certificatesDirectory, globalCACertPool))))
 }
 
 func dsnPostgreSQLHostPort(address *schema.AddressTCP) (host string, port uint16) {
@@ -430,68 +423,76 @@ func newPostgreSQLVerifyPeerCertificateFunc(config *tls.Config) func(certificate
 	}
 }
 
-// newPostgreSQLBeforeConnect returns a hook that rebuilds the TLS configuration for every new connection, so a
-// certificate pair or a certificates directory replaced on disk is used without a restart.
+const driverNamePostgreSQL = "pgx-authelia"
+
+func init() {
+	sql.Register(driverNamePostgreSQL, &postgreSQLDriver{})
+	sqlx.BindDriver(driverNamePostgreSQL, sqlx.DOLLAR)
+}
+
+var (
+	postgreSQLConnectors   = map[string]driver.Connector{}
+	postgreSQLConnectorsMu sync.Mutex
+)
+
+func registerPostgreSQLConnector(connector driver.Connector) (name string) {
+	postgreSQLConnectorsMu.Lock()
+	defer postgreSQLConnectorsMu.Unlock()
+
+	name = strconv.Itoa(len(postgreSQLConnectors))
+	postgreSQLConnectors[name] = connector
+
+	return name
+}
+
+// postgreSQLDriver is a [driver.DriverContext] that opens the connectors registered by dsnPostgreSQL, which the pgx
+// driver registered with [stdlib.RegisterConnConfig] cannot do as it ignores [stdlib.OptionBeforeConnect].
+type postgreSQLDriver struct{}
+
+func (postgreSQLDriver) OpenConnector(name string) (driver.Connector, error) {
+	postgreSQLConnectorsMu.Lock()
+	defer postgreSQLConnectorsMu.Unlock()
+
+	connector, ok := postgreSQLConnectors[name]
+	if !ok {
+		return nil, fmt.Errorf("postgres connector '%s' is not registered", name)
+	}
+
+	return connector, nil
+}
+
+func (d postgreSQLDriver) Open(name string) (driver.Conn, error) {
+	connector, err := d.OpenConnector(name)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	return connector.Connect(ctx)
+}
+
+// newPostgreSQLBeforeConnect returns a hook that loads the TLS configuration again for every new connection, so a
+// client certificate pair or a certificates directory replaced on disk is used without a restart.
 func newPostgreSQLBeforeConnect(config *schema.StoragePostgreSQL, certificatesDirectory string, globalCACertPool *x509.CertPool) func(context.Context, *pgx.ConnConfig) error {
-	return func(_ context.Context, connConfig *pgx.ConnConfig) error {
-		if config.TLS == nil && len(config.Servers) == 0 {
-			return nil
-		}
+	return func(_ context.Context, connConfig *pgx.ConnConfig) (err error) {
+		rootCAs := globalCACertPool
 
-		rootCAs, err := postgreSQLRootCAs(certificatesDirectory, globalCACertPool)
-		if err != nil {
-			return err
-		}
+		if certificatesDirectory != "" {
+			var errs []error
 
-		if config.TLS != nil {
-			connConfig.TLSConfig = postgreSQLTLSConfig(config.TLS, connConfig.TLSConfig, rootCAs)
-		}
-
-		if len(connConfig.Fallbacks) != 0 {
-			fallbacks := slices.Clone(connConfig.Fallbacks)
-
-			for i, server := range config.Servers {
-				if i >= len(fallbacks) || server.TLS == nil {
-					continue
-				}
-
-				fallback := *fallbacks[i]
-				fallback.TLSConfig = postgreSQLTLSConfig(server.TLS, fallbacks[i].TLSConfig, rootCAs)
-				fallbacks[i] = &fallback
+			if rootCAs, _, errs = utils.NewX509CertPool(certificatesDirectory); len(errs) != 0 {
+				return fmt.Errorf("failed to load the certificates directory '%s': %w", certificatesDirectory, errors.Join(errs...))
 			}
+		}
 
-			connConfig.Fallbacks = fallbacks
+		connConfig.TLSConfig = loadPostgreSQLTLSConfig(config, rootCAs)
+
+		if len(config.Servers) != 0 {
+			dsnPostgreSQLFallbacks(config, rootCAs, connConfig)
 		}
 
 		return nil
 	}
-}
-
-// postgreSQLRootCAs rebuilds the trust pool from the certificates directory, keeping the system trust.
-func postgreSQLRootCAs(certificatesDirectory string, globalCACertPool *x509.CertPool) (rootCAs *x509.CertPool, err error) {
-	if certificatesDirectory == "" {
-		return globalCACertPool, nil
-	}
-
-	var errs []error
-
-	if rootCAs, _, errs = utils.NewX509CertPool(certificatesDirectory); len(errs) != 0 {
-		return nil, fmt.Errorf("failed to load the certificates directory '%s': %w", certificatesDirectory, errors.Join(errs...))
-	}
-
-	return rootCAs, nil
-}
-
-// postgreSQLTLSConfig builds the TLS configuration, keeping the server name the previous configuration had so SNI
-// and hostname verification are unchanged.
-func postgreSQLTLSConfig(config *schema.TLS, previous *tls.Config, rootCAs *x509.CertPool) (tlsConfig *tls.Config) {
-	if tlsConfig = utils.NewTLSConfig(config, rootCAs); tlsConfig == nil {
-		return nil
-	}
-
-	if tlsConfig.ServerName == "" && previous != nil {
-		tlsConfig.ServerName = previous.ServerName
-	}
-
-	return tlsConfig
 }

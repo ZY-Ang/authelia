@@ -1617,3 +1617,32 @@ func TestDeriveCryptographicKey(t *testing.T) {
 		assert.NotEqual(t, DeriveLegacyCryptographicKey([]byte("the key")), derived)
 	})
 }
+
+func TestNewTLSConfigShouldReloadCertificatePairFromPath(t *testing.T) {
+	dir := t.TempDir()
+	crypto := filepath.Join("..", "configuration", "test_resources", "crypto")
+	certPath, keyPath := filepath.Join(dir, "client.crt"), filepath.Join(dir, "client.pem")
+
+	copyPair := func(name string) {
+		for src, dst := range map[string]string{name + ".crt": certPath, name + ".pem": keyPath} {
+			data, err := os.ReadFile(filepath.Join(crypto, src))
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(dst, data, 0o600))
+		}
+	}
+
+	copyPair("rsa.2048")
+
+	tlsConfig := NewTLSConfig(&schema.TLS{CertificateChainPath: certPath, PrivateKeyPath: keyPath}, nil)
+	require.NotNil(t, tlsConfig.GetClientCertificate)
+
+	first, err := tlsConfig.GetClientCertificate(nil)
+	require.NoError(t, err)
+
+	copyPair("rsa.4096")
+
+	second, err := tlsConfig.GetClientCertificate(nil)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, first.Certificate[0], second.Certificate[0])
+}

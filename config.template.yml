@@ -947,7 +947,6 @@ session:
     ## The connection timeout in the duration common syntax.
     # timeout: '5 seconds'
 
-
     ## The maximum number of retries on a failed command. Set it to 0 to disable retries.
     # max_retries: 3
 
@@ -1094,7 +1093,6 @@ session:
 
     ## The connection timeout in the duration common syntax.
     # timeout: '5 seconds'
-
 
     ## MySQL TLS settings. Configuring this requires TLS.
     # tls:
@@ -1253,7 +1251,6 @@ session:
 
     ## The connection timeout in the duration common syntax.
     # timeout: '5 seconds'
-
 
     ## The username used for SMTP authentication.
     # username: 'test'

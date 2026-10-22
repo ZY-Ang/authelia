@@ -41,21 +41,17 @@ func NewProvider(config *schema.Configuration, caCertPool *x509.CertPool) (provi
 
 // NewSQLProvider generates a generic SQLProvider to be used with other SQL provider NewUp's.
 func NewSQLProvider(config *schema.Configuration, name, driverName, dataSourceName string) (provider SQLProvider, err error) {
-	var db *sqlx.DB
-
-	if db, err = sqlx.Open(driverName, dataSourceName); err != nil {
-		return provider, fmt.Errorf("error opening database: %w", err)
-	}
-
-	return newSQLProvider(config, name, driverName, db)
-}
-
-// newSQLProvider generates a generic SQLProvider from an existing database handle.
-func newSQLProvider(config *schema.Configuration, name, driverName string, db *sqlx.DB) (provider SQLProvider, err error) {
-	var encryption []byte
+	var (
+		db         *sqlx.DB
+		encryption []byte
+	)
 
 	if encryption, err = utils.DeriveCryptographicKey([]byte(config.Storage.EncryptionKey), hkdfKeyInfo, sha256.New); err != nil {
 		return provider, fmt.Errorf("error occurred deriving encryption key: %w", err)
+	}
+
+	if db, err = sqlx.Open(driverName, dataSourceName); err != nil {
+		return provider, fmt.Errorf("error opening database: %w", err)
 	}
 
 	provider = SQLProvider{

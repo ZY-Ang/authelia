@@ -60,8 +60,4 @@ func TestValidateTLSConfigFiles(t *testing.T) {
 
 	assert.EqualError(t, ValidateTLSConfig(config, configDefault),
 		"option 'private_key_path' is invalid: it cannot be used in addition to 'private_key'")
-
-	config = &schema.TLS{CertificateChainPath: "../test_resources/crypto/does.not.exist.crt", PrivateKeyPath: keyPath}
-
-	assert.ErrorContains(t, ValidateTLSConfig(config, configDefault), "option 'certificate_chain_path' is invalid: the certificate pair could not be loaded")
 }

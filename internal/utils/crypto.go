@@ -320,17 +320,28 @@ func NewTLSConfig(config *schema.TLS, rootCAs *x509.CertPool) (tlsConfig *tls.Co
 		return nil
 	}
 
+	var certificates []tls.Certificate
+
+	if config.PrivateKey != nil && config.CertificateChain.HasCertificates() {
+		certificates = []tls.Certificate{
+			{
+				Certificate: config.CertificateChain.CertificatesRaw(),
+				Leaf:        config.CertificateChain.Leaf(),
+				PrivateKey:  config.PrivateKey,
+			},
+		}
+	}
+
 	tlsConfig = &tls.Config{
 		ServerName:         config.ServerName,
 		InsecureSkipVerify: config.SkipVerify, //nolint:gosec // Informed choice by user. Off by default.
 		MinVersion:         config.MinimumVersion.MinVersion(),
 		MaxVersion:         config.MaximumVersion.MaxVersion(),
 		RootCAs:            rootCAs,
+		Certificates:       certificates,
 	}
 
-	switch {
-	case config.CertificateChainPath != "" && config.PrivateKeyPath != "":
-		// Read the pair for each handshake so a pair replaced on disk is used by the next connection.
+	if config.CertificateChainPath != "" && config.PrivateKeyPath != "" {
 		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			certificate, err := tls.LoadX509KeyPair(config.CertificateChainPath, config.PrivateKeyPath)
 			if err != nil {
@@ -338,14 +349,6 @@ func NewTLSConfig(config *schema.TLS, rootCAs *x509.CertPool) (tlsConfig *tls.Co
 			}
 
 			return &certificate, nil
-		}
-	case config.PrivateKey != nil && config.CertificateChain.HasCertificates():
-		tlsConfig.Certificates = []tls.Certificate{
-			{
-				Certificate: config.CertificateChain.CertificatesRaw(),
-				Leaf:        config.CertificateChain.Leaf(),
-				PrivateKey:  config.PrivateKey,
-			},
 		}
 	}
 
